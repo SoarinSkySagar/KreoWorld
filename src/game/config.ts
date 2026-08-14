@@ -1,5 +1,7 @@
 import * as Phaser from "phaser";
-import { BootScene } from "./scenes/BootScene";
+import { PreloadScene } from "./scenes/PreloadScene";
+import { OverworldScene } from "./scenes/OverworldScene";
+import { InteriorScene } from "./scenes/InteriorScene";
 
 /**
  * Builds the Phaser game config bound to a specific parent element. Called only
@@ -8,7 +10,7 @@ import { BootScene } from "./scenes/BootScene";
  * The game fills its parent (which fills the viewport) via Scale.RESIZE — the
  * canvas has no fixed internal resolution and no letterboxing; the world viewport
  * simply matches the window. Scenes must lay out against `this.scale.width/height`
- * and react to the `resize` event (see BootScene).
+ * and react to the `resize` event.
  */
 export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameConfig {
   return {
@@ -27,6 +29,6 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
       default: "arcade",
       arcade: { gravity: { x: 0, y: 0 }, debug: false },
     },
-    scene: [BootScene],
+    scene: [PreloadScene, OverworldScene, InteriorScene],
   };
 }
