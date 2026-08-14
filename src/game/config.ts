@@ -1,27 +1,27 @@
 import * as Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 
-/** Internal render resolution — GBA-ish. The canvas scales up to fit its parent
- *  while preserving aspect ratio (Scale.FIT), so art stays crisp and pixel-art. */
-export const GAME_WIDTH = 480;
-export const GAME_HEIGHT = 320;
-
 /**
  * Builds the Phaser game config bound to a specific parent element. Called only
  * on the client (inside PhaserGame's effect), so Phaser never loads during SSR.
+ *
+ * The game fills its parent (which fills the viewport) via Scale.RESIZE — the
+ * canvas has no fixed internal resolution and no letterboxing; the world viewport
+ * simply matches the window. Scenes must lay out against `this.scale.width/height`
+ * and react to the `resize` event (see BootScene).
  */
 export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameConfig {
   return {
     type: Phaser.AUTO,
     parent,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
     backgroundColor: "#0b0e1a",
     pixelArt: true, // crisp scaling for GBA-style tiles/sprites
     roundPixels: true,
     scale: {
-      mode: Phaser.Scale.FIT,
+      mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: "100%",
+      height: "100%",
     },
     physics: {
       default: "arcade",

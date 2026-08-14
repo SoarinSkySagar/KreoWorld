@@ -50,7 +50,7 @@ export function PhaserGame({ className }: { className?: string }) {
     <div
       ref={containerRef}
       className={cn(
-        "h-full w-full overflow-hidden [&>canvas]:mx-auto [&>canvas]:block",
+        "h-full w-full overflow-hidden [&>canvas]:block [&>canvas]:h-full [&>canvas]:w-full",
         className,
       )}
       aria-label="Game canvas"
