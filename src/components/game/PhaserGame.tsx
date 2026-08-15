@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import type * as Phaser from "phaser";
 import { useGameStore } from "@/lib/store/gameStore";
 import { cn } from "@/lib/utils";
+import { DEFAULT_MAP, type MapKey } from "@/game/maps";
 
 /**
  * Mounts the Phaser game into a DOM node and tears it down cleanly.
@@ -15,8 +16,11 @@ import { cn } from "@/lib/utils";
  *    double-mount in dev (create once, destroy on real unmount).
  *  - The store is hydrated from the mock service before/while the scene boots,
  *    so scenes can read player/world data from the shared bridge.
+ *  - `mapKey` selects which (unconnected) city this game instance shows;
+ *    PreloadScene reads it back out of the registry to load only that city's
+ *    assets. Passed once at boot — not a live-updating prop.
  */
-export function PhaserGame({ className }: { className?: string }) {
+export function PhaserGame({ className, mapKey = DEFAULT_MAP }: { className?: string; mapKey?: MapKey }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const hydrate = useGameStore((s) => s.hydrate);
@@ -34,7 +38,9 @@ export function PhaserGame({ className }: { className?: string }) {
         import("@/game/config"),
       ]);
       if (cancelled || !containerRef.current) return;
-      gameRef.current = new PhaserLib.Game(createGameConfig(containerRef.current));
+      const game = new PhaserLib.Game(createGameConfig(containerRef.current));
+      game.registry.set("initialMapKey", mapKey);
+      gameRef.current = game;
     }
 
     void boot();
@@ -44,6 +50,7 @@ export function PhaserGame({ className }: { className?: string }) {
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mapKey is a boot-time choice, not reactive
   }, [hydrate]);
 
   return (

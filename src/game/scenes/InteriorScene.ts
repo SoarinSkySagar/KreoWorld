@@ -3,8 +3,10 @@ import { TILE } from "../constants";
 import { applyCameraZoom } from "../camera";
 import { Player } from "../entities/Player";
 import { ROOMS, RoomKey } from "../rooms";
+import type { MapKey } from "../maps";
 
 interface InteriorData {
+  mapKey: MapKey;
   roomKey: RoomKey;
   title: string;
   returnX: number;
@@ -145,7 +147,11 @@ export class InteriorScene extends Phaser.Scene {
     this.player.sprite.setVelocity(0, 0);
     this.cameras.main.fadeOut(250);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start("OverworldScene", { spawnX: this.entry.returnX, spawnY: this.entry.returnY });
+      this.scene.start("OverworldScene", {
+        mapKey: this.entry.mapKey,
+        spawnX: this.entry.returnX,
+        spawnY: this.entry.returnY,
+      });
     });
   }
 }

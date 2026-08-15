@@ -3,52 +3,40 @@ import { TILE } from "../constants";
 import { applyCameraZoom } from "../camera";
 import { Player } from "../entities/Player";
 import type { RoomKey } from "../rooms";
-import city1 from "../maps/city1.json";
+import { DEFAULT_MAP, MAPS, type Gate, type MapKey } from "../maps";
 import { gameStore } from "@/lib/store/gameStore";
 
-const W = city1.width;
-const H = city1.height;
-const B = city1.border;
-const AV = city1.avenue;
-
-interface HouseDef {
-  tex: string;
-  left: number;
-  bottom: number;
-  w: number;
-  door: number;
-  room: string;
-}
-interface DecorDef {
-  tex: string;
-  left: number;
-  bottom: number;
-  w: number;
-  solid: boolean;
-}
-interface SpawnData {
+interface EnterData {
+  mapKey?: MapKey;
   spawnX?: number;
   spawnY?: number;
 }
 
 /**
- * The first city. The ground layer (grass + autotiled gravel paths + pond
- * shorelines) is a single baked image; houses, fences, trees, flowers and water
- * come from the layout JSON (see scripts/build-city.py). The camera follows the
- * player (world scrolls, player stays centered). Doors warp to InteriorScene.
+ * A standalone city. The ground layer (grass + autotiled gravel paths + pond
+ * shorelines) is a single baked image per city; houses, fences, trees, flowers,
+ * water and exit gates come from that city's layout JSON (see
+ * scripts/build-city.py). The camera follows the player (world scrolls, player
+ * stays centered). Doors warp to InteriorScene; re-entering the overworld
+ * carries `mapKey` so the player returns to the same city they left, never a
+ * different one — cities are not connected to each other.
  */
 export class OverworldScene extends Phaser.Scene {
   private player!: Player;
   private solids!: Phaser.Physics.Arcade.StaticGroup;
   private doors!: Phaser.Physics.Arcade.StaticGroup;
   private transitioning = false;
-  private spawn: SpawnData = {};
+  private mapKey: MapKey = DEFAULT_MAP;
+  private layout = MAPS[DEFAULT_MAP];
+  private spawn: EnterData = {};
 
   constructor() {
     super("OverworldScene");
   }
 
-  init(data: SpawnData): void {
+  init(data: EnterData): void {
+    this.mapKey = data?.mapKey ?? (this.registry.get("initialMapKey") as MapKey) ?? DEFAULT_MAP;
+    this.layout = MAPS[this.mapKey];
     this.spawn = data ?? {};
     this.transitioning = false;
   }
@@ -62,8 +50,8 @@ export class OverworldScene extends Phaser.Scene {
     this.buildBorderCollision();
     this.buildHousesAndDecor();
 
-    const px = this.spawn.spawnX ?? city1.entrance.x;
-    const py = this.spawn.spawnY ?? city1.entrance.y;
+    const px = this.spawn.spawnX ?? this.layout.entrance.x;
+    const py = this.spawn.spawnY ?? this.layout.entrance.y;
     this.player = new Player(this, px, py, "up");
     this.physics.add.collider(this.player.sprite, this.solids);
     this.physics.add.overlap(this.player.sprite, this.doors, (_p, zone) => {
@@ -93,6 +81,7 @@ export class OverworldScene extends Phaser.Scene {
   // --- builders ---------------------------------------------------------------
 
   private buildGround(): void {
+    const { width: W, height: H } = this.layout;
     // Grass base extends well past the map so no void shows while the camera
     // keeps the player centered; the baked ground (with roads/ponds) sits on top.
     const pad = 24;
@@ -100,7 +89,7 @@ export class OverworldScene extends Phaser.Scene {
       .tileSprite(-pad * TILE, -pad * TILE, (W + pad * 2) * TILE, (H + pad * 2) * TILE, "grass")
       .setOrigin(0, 0)
       .setDepth(-2000);
-    this.add.image(0, 0, "city1_ground").setOrigin(0, 0).setDepth(-1000);
+    this.add.image(0, 0, "cityGround").setOrigin(0, 0).setDepth(-1000);
   }
 
   private buildWater(): void {
@@ -113,24 +102,57 @@ export class OverworldScene extends Phaser.Scene {
       });
     }
     // Every pond cell animates; each is also solid (can't walk into water).
-    for (const [x, y] of city1.waterInterior as number[][]) {
+    for (const [x, y] of this.layout.waterInterior) {
       this.add.sprite(x * TILE, y * TILE, "water_anim").setOrigin(0, 0).setDepth(-900).play("water");
       this.solidTiles(x, y, 1, 1);
     }
   }
 
+  /**
+   * Solid forest ring around the whole map, with a rectangular opening carved
+   * out for each configured gate. Generic over any combination of N/S/E/W
+   * gates (at most one per side in practice), so every city — regardless of
+   * which sides its exits are on — reuses the same logic.
+   */
   private buildBorderCollision(): void {
-    // Solid forest ring with a gap for the avenue (entrance south / exit north).
-    this.solidTiles(0, 0, AV[0] - 1, B);
-    this.solidTiles(AV[1] + 2, 0, W - (AV[1] + 2), B);
-    this.solidTiles(0, H - B, AV[0] - 1, B);
-    this.solidTiles(AV[1] + 2, H - B, W - (AV[1] + 2), B);
-    this.solidTiles(0, 0, B, H);
-    this.solidTiles(W - B, 0, B, H);
+    const { width: W, height: H, border: B, gates } = this.layout;
+    const gateOn = (side: Gate["side"]) => gates.find((g) => g.side === side);
+
+    const n = gateOn("N");
+    if (n) {
+      this.solidTiles(0, 0, n.start, B);
+      this.solidTiles(n.start + n.length, 0, W - (n.start + n.length), B);
+    } else {
+      this.solidTiles(0, 0, W, B);
+    }
+
+    const s = gateOn("S");
+    if (s) {
+      this.solidTiles(0, H - B, s.start, B);
+      this.solidTiles(s.start + s.length, H - B, W - (s.start + s.length), B);
+    } else {
+      this.solidTiles(0, H - B, W, B);
+    }
+
+    const w = gateOn("W");
+    if (w) {
+      this.solidTiles(0, 0, B, w.start);
+      this.solidTiles(0, w.start + w.length, B, H - (w.start + w.length));
+    } else {
+      this.solidTiles(0, 0, B, H);
+    }
+
+    const e = gateOn("E");
+    if (e) {
+      this.solidTiles(W - B, 0, B, e.start);
+      this.solidTiles(W - B, e.start + e.length, B, H - (e.start + e.length));
+    } else {
+      this.solidTiles(W - B, 0, B, H);
+    }
   }
 
   private buildHousesAndDecor(): void {
-    for (const h of city1.houses as HouseDef[]) {
+    for (const h of this.layout.houses) {
       this.place(h.tex, h.left, h.bottom, h.w);
       this.solidTiles(h.left, h.bottom - 3, h.w, 4);
       // Door trigger on the spur tile just below the house (through the fence gap).
@@ -145,7 +167,7 @@ export class OverworldScene extends Phaser.Scene {
       this.doors.add(zone);
     }
 
-    for (const d of city1.decor as DecorDef[]) {
+    for (const d of this.layout.decor) {
       this.place(d.tex, d.left, d.bottom, d.w);
       if (!d.solid) continue;
       if (d.tex.startsWith("tree")) this.solidTiles(d.left, d.bottom, d.w, 1);
@@ -190,6 +212,7 @@ export class OverworldScene extends Phaser.Scene {
     this.cameras.main.fadeOut(250);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
       this.scene.start("InteriorScene", {
+        mapKey: this.mapKey,
         roomKey: warp.room,
         title: warp.room,
         returnX: warp.returnX,

@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { preloadPlayer } from "../entities/Player";
+import { DEFAULT_MAP, type MapKey } from "../maps";
 
 const WORLD = [
   "grass", "path", "tree_a", "tree_b", "tree_c", "hedge",
@@ -12,7 +13,12 @@ const INTERIOR = [
   "bed", "sofa", "chair", "stools", "rug", "shelf", "counter", "tv", "plant", "dresser",
 ];
 
-/** Loads every texture once, then hands off to the overworld. */
+/**
+ * Loads every shared texture, plus the one city's ground image this game
+ * instance is showing (set into the registry by PhaserGame before boot; each
+ * route only ever runs one city, so only its ground is fetched). Hands off to
+ * the overworld once loading completes.
+ */
 export class PreloadScene extends Phaser.Scene {
   constructor() {
     super("PreloadScene");
@@ -31,14 +37,16 @@ export class PreloadScene extends Phaser.Scene {
       .setScrollFactor(0);
     this.load.on("progress", (p: number) => label.setText(`loading world… ${Math.round(p * 100)}%`));
 
+    const mapKey = (this.registry.get("initialMapKey") as MapKey) ?? DEFAULT_MAP;
     preloadPlayer(this);
-    this.load.image("city1_ground", "/assets/maps/city1_ground.png");
+    this.load.image("cityGround", `/assets/maps/${mapKey}_ground.png`);
     this.load.spritesheet("water_anim", "/assets/world/water_anim.png", { frameWidth: 16, frameHeight: 16 });
     WORLD.forEach((k) => this.load.image(k, `/assets/world/${k}.png`));
     INTERIOR.forEach((k) => this.load.image(k, `/assets/interior/${k}.png`));
   }
 
   create(): void {
-    this.scene.start("OverworldScene");
+    const mapKey = (this.registry.get("initialMapKey") as MapKey) ?? DEFAULT_MAP;
+    this.scene.start("OverworldScene", { mapKey });
   }
 }
