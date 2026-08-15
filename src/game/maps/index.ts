@@ -1,6 +1,7 @@
 import townMain from "./town-main.json";
 import townB from "./town-b.json";
 import townC from "./town-c.json";
+import pump from "./pump.json";
 
 /**
  * All maps share this shape (see scripts/build-city.py). Each `gate` is a
@@ -36,6 +37,10 @@ export interface CityLayout {
   height: number;
   tile: number;
   border: number;
+  /** Texture key for the far camera-safety backdrop beyond the map edge. */
+  backdrop: string;
+  /** Which gate the player spawns facing into, on first arrival. */
+  entranceSide: Gate["side"];
   gates: Gate[];
   entrance: { x: number; y: number };
   houses: HouseDef[];
@@ -46,13 +51,18 @@ export interface CityLayout {
   decor: DecorDef[];
 }
 
-/** Route-agnostic map identifiers. `/` = town-main, `/city1` = town-b, `/city2` = town-c. */
-export type MapKey = "town-main" | "town-b" | "town-c";
+/**
+ * Route-agnostic map identifiers. `/` = town-main, `/city1` = town-b,
+ * `/city2` = town-c, `/island` = pump (the central hub). None of these are
+ * connected to each other.
+ */
+export type MapKey = "town-main" | "town-b" | "town-c" | "pump";
 
 export const MAPS: Record<MapKey, CityLayout> = {
   "town-main": townMain as CityLayout,
   "town-b": townB as CityLayout,
   "town-c": townC as CityLayout,
+  pump: pump as CityLayout,
 };
 
 export const DEFAULT_MAP: MapKey = "town-main";

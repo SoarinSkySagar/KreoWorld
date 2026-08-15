@@ -3,6 +3,8 @@
 "height": 56,
 "tile": 16,
 "border": 6,
+"backdrop": "grass",
+"entranceSide": "S",
 "gates": [
 {
 "side": "S",

@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-Generate all three starter cities' ground layers and layouts.
+Generate all starter maps' ground layers and layouts: three standalone cities
+plus the central hub ("the Pump").
 
 - Reads the Serene Village autotile sheet (Construct 3
   `Autotiles_no_inner_corners_16x16.png`) and builds edge->tile lookups by
-  SAMPLING each tile's edge pixels (grass vs not), so dirt paths and pond
-  shorelines are properly autotiled.
-- For each city, bakes `public/assets/maps/{name}_ground.png` (grass +
-  gravel/dirt paths + pond shore & water) and writes `src/game/maps/{name}.json`
-  (layout the Phaser scene reads: houses, road/pond rects, gates, decor).
+  SAMPLING each tile's edge pixels (grass vs not), so dirt paths, pond
+  shorelines and the pump's island shoreline are properly autotiled.
+- For each map, bakes `public/assets/maps/{name}_ground.png` and writes
+  `src/game/maps/{name}.json` (layout the Phaser scene reads: houses,
+  road/pond rects, gates, decor).
 - Copies the animated-water strip to `public/assets/world/water_anim.png`.
 
-All three cities share the exact same house/street/pond/forest/fence GENERATION
-LOGIC (see `build_city()`); only the exit-gate configuration, RNG seed, and a
-couple of small layout knobs (house columns, pond rects) differ per city, so
-each looks distinct while staying mechanically identical.
+The three cities share the exact same house/street/pond/forest/fence
+GENERATION LOGIC (see `build_city()`); only the exit-gate configuration, RNG
+seed, and a couple of small layout knobs (house columns, pond rects) differ
+per city, so each looks distinct while staying mechanically identical. The
+pump (`build_pump()`) reuses the same autotile/beach/decor primitives but has
+entirely different geometry (island + moat, no forest border).
 
 Re-run after changing any layout:  python3 scripts/build-city.py
 """
@@ -51,6 +54,7 @@ def build_lookup(c0):
 
 DIRT = build_lookup(0)    # blob terrain = grass, background = dirt
 GRASS_TILE = (0, 0)
+WATER_TILE = (8, 0)       # pure water fill on the same autotile sheet
 
 def tile_img(cr):
     c, r = cr
@@ -376,7 +380,8 @@ def build_city(cfg):
 
     # --- write layout json ----------------------------------------------------
     layout = {
-        "width": W, "height": H, "tile": T, "border": B,
+        "width": W, "height": H, "tile": T, "border": B, "backdrop": "grass",
+        "entranceSide": primary_gate_side,
         "gates": gates,
         "entrance": entrance,
         "houses": houses,
@@ -389,6 +394,181 @@ def build_city(cfg):
         json.dump(layout, f, indent=0)
 
     print(f"[{name}] ground {ground.size}  houses={len(houses)}  ponds={len(ponds)}  "
+          f"waterInterior={len(water_interior)}  decor={len(decor)}  gates={gates}")
+
+    save_preview(name, ground, water_interior, houses, decor, entrance, W, H)
+
+
+def build_pump(cfg):
+    """Generate the central hub ('the Pump'): a small island surrounded by
+    water, reached by three wooden bridges (N/W/E — no south exit), with one
+    large building at its centre and flowers as the only decor.
+
+    Reuses the same autotile/beach/decor primitives as build_city(), but with
+    entirely different geometry: there is no forest border here — water
+    itself blocks every non-gate direction (matching how pond cells already
+    double as solid collision), so no separate ring-collision logic is
+    needed beyond the generic N/S/E/W `gates` carving OverworldScene already
+    supports for the cities. No fences anywhere (bridges are walkway-only)."""
+    name = cfg["name"]
+    rng = random.Random(cfg["seed"])
+    W, H, B = cfg["W"], cfg["H"], cfg["B"]
+    cx, cy = cfg["center"]
+    rx, ry = cfg["island_radii"]
+    bw = cfg.get("bridge_width", 2)
+
+    def in_island(x, y):
+        return ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1
+
+    island_cells = {(x, y) for y in range(H) for x in range(W) if in_island(x, y)}
+
+    # One large building, centred on the island.
+    b_left, b_bottom, b_w, b_h = cx - 2, cy + 2, 4, 4
+    houses = [{"tex": "house_red_wide", "left": b_left, "bottom": b_bottom,
+               "w": b_w, "door": b_left + 1, "room": "pump"}]
+    building_rect = [b_left, b_bottom - b_h + 1, b_w, b_h]
+
+    # Bridges: bw-wide strips from the border straight to the island edge,
+    # found by scanning for the island boundary along each bridge's axis
+    # (rather than hand-computing it — the overlap bug from the cities'
+    # hand-picked ponds is exactly the mistake this avoids).
+    def island_edge(span, axis, want_min):
+        vals = []
+        for f in span:
+            for v in range(H if axis == "x" else W):
+                cell = (f, v) if axis == "x" else (v, f)
+                if cell in island_cells:
+                    vals.append(v)
+        return (min(vals) if want_min else max(vals)) if vals else None
+
+    n_span = range(cx - bw // 2, cx - bw // 2 + bw)
+    n_edge = island_edge(n_span, "x", want_min=True)
+    bridge_n = [n_span[0], B, bw, n_edge - B]
+
+    ew_span = range(cy - bw // 2, cy - bw // 2 + bw)
+    w_edge = island_edge(ew_span, "y", want_min=True)
+    bridge_w_side = [B, ew_span[0], w_edge - B, bw]
+    e_edge = island_edge(ew_span, "y", want_min=False)
+    bridge_e_side = [e_edge + 1, ew_span[0], (W - B) - (e_edge + 1), bw]
+    bridges = [bridge_n, bridge_w_side, bridge_e_side]
+
+    gates = [
+        {"side": "N", "start": n_span[0], "length": bw},
+        {"side": "W", "start": ew_span[0], "length": bw},
+        {"side": "E", "start": ew_span[0], "length": bw},
+    ]
+
+    def _rect_overlap(a, b):
+        ax, ay, aw, ah = a
+        bx, by, bw2, bh = b
+        return ax < bx + bw2 and bx < ax + aw and ay < by + bh and by < ay + ah
+    for br in bridges:
+        if _rect_overlap(br, building_rect):
+            raise SystemExit(f"[{name}] bridge {br} overlaps building {building_rect}")
+
+    bridge_v_cells = rects_to_cells([bridge_n], W, H)
+    bridge_h_cells = rects_to_cells([bridge_w_side, bridge_e_side], W, H)
+    bridge_cells = bridge_v_cells | bridge_h_cells
+
+    # --- bake ground: water everywhere, island = grass, bridges = plank ------
+    ground = Image.new("RGBA", (W * T, H * T))
+    water_tile, grass_tile = tile_img(WATER_TILE), tile_img(GRASS_TILE)
+    for y in range(H):
+        for x in range(W):
+            ground.alpha_composite(water_tile, (x * T, y * T))
+    for (x, y) in island_cells:
+        ground.alpha_composite(grass_tile, (x * T, y * T))
+    bridge_v_tex, bridge_h_tex = load_tex("bridge_v"), load_tex("bridge_h")
+    for (x, y) in bridge_v_cells:
+        ground.alpha_composite(bridge_v_tex, (x * T, y * T))
+    for (x, y) in bridge_h_cells:
+        ground.alpha_composite(bridge_h_tex, (x * T, y * T))
+
+    # Beach (sand+foam) on every island edge that faces open water (not a
+    # bridge landing) — same technique as pond shorelines, mirrored: painted
+    # onto the island cell itself rather than a water neighbour, since here
+    # the LAND is the small shape and water is the background.
+    beach = Image.new("RGBA", ground.size, (0, 0, 0, 0))
+    bd = ImageDraw.Draw(beach)
+    for (x, y) in island_cells:
+        X, Y = x * T, y * T
+        for dx, dy in ((0, -1), (1, 0), (0, 1), (-1, 0)):
+            nb = (x + dx, y + dy)
+            if nb in island_cells or nb in bridge_cells:
+                continue
+            if dy == -1:
+                bd.rectangle([X, Y, X + T - 1, Y], fill=FOAM)
+                bd.rectangle([X, Y + 1, X + T - 1, Y + 4], fill=SAND)
+            elif dy == 1:
+                bd.rectangle([X, Y + T - 1, X + T - 1, Y + T - 1], fill=FOAM)
+                bd.rectangle([X, Y + T - 5, X + T - 1, Y + T - 2], fill=SAND)
+            elif dx == -1:
+                bd.rectangle([X, Y, X, Y + T - 1], fill=FOAM)
+                bd.rectangle([X + 1, Y, X + 4, Y + T - 1], fill=SAND)
+            else:
+                bd.rectangle([X + T - 1, Y, X + T - 1, Y + T - 1], fill=FOAM)
+                bd.rectangle([X + T - 5, Y, X + T - 2, Y + T - 1], fill=SAND)
+    ground.alpha_composite(beach)
+
+    os.makedirs(f"{PUB}/maps", exist_ok=True)
+    ground.save(f"{PUB}/maps/{name}_ground.png")
+
+    # Every non-island, non-bridge cell in the real map animates (the whole
+    # moat waves). The padding beyond the map relies on the static "water"
+    # backdrop tileSprite instead (see OverworldScene.buildGround) — no
+    # individual sprites needed out there since it's uniform, unlike the
+    # cities' forest padding which needed distinct tree images.
+    water_interior = [[x, y] for y in range(H) for x in range(W)
+                       if (x, y) not in island_cells and (x, y) not in bridge_cells]
+
+    # --- decor: flowers only, no trees/hedges/rocks, scattered on the island -
+    occ = [[False] * W for _ in range(H)]
+    def mark(x, y, w, h):
+        for yy in range(y, y + h):
+            for xx in range(x, x + w):
+                if 0 <= xx < W and 0 <= yy < H:
+                    occ[yy][xx] = True
+    mark(*building_rect)
+
+    decor = []
+    def add(tex, left, bottom, w, solid):
+        decor.append({"tex": tex, "left": left, "bottom": bottom, "w": w, "solid": solid})
+        mark(left, bottom, w, 1)
+
+    for (x, y) in sorted(island_cells):
+        if occ[y][x] or (x, y) in bridge_cells:
+            continue
+        # keep a flower-free margin right at each bridge landing
+        if any((x + dx, y + dy) in bridge_cells for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+            continue
+        if rng.random() < 0.55:
+            add(rng.choice(["flower", "bush"]), x, y, 1, False)
+
+    # --- entrance: spawn just inside the primary gate -------------------------
+    pg = next(gt for gt in gates if gt["side"] == cfg["primary_gate"])
+    center = pg["start"] + pg["length"] / 2
+    if pg["side"] == "N":
+        entrance = {"x": center * T, "y": B * T}
+    elif pg["side"] == "W":
+        entrance = {"x": B * T, "y": center * T}
+    else:  # "E"
+        entrance = {"x": (W - B) * T, "y": center * T}
+
+    layout = {
+        "width": W, "height": H, "tile": T, "border": B, "backdrop": "water",
+        "entranceSide": cfg["primary_gate"],
+        "gates": gates,
+        "entrance": entrance,
+        "houses": houses,
+        "roads": [], "spurs": bridges, "ponds": [],
+        "waterInterior": water_interior,
+        "decor": decor,
+    }
+    os.makedirs(f"{ROOT}/src/game/maps", exist_ok=True)
+    with open(f"{ROOT}/src/game/maps/{name}.json", "w") as f:
+        json.dump(layout, f, indent=0)
+
+    print(f"[{name}] ground {ground.size}  island={len(island_cells)}  bridgeCells={len(bridge_cells)}  "
           f"waterInterior={len(water_interior)}  decor={len(decor)}  gates={gates}")
 
     save_preview(name, ground, water_interior, houses, decor, entrance, W, H)
@@ -453,4 +633,15 @@ build_city({
     "primary_gate": "S",
     "col_sets": [[8, 14, 20, 41, 47, 53], [6, 12, 18, 43, 49, 55], [11, 18, 45, 52]],
     "ponds": [[24, 7, 5, 7], [36, 24, 6, 5]],
+})
+
+# --- the central hub ("the Pump") ---------------------------------------------
+build_pump({
+    "name": "pump",
+    "seed": 99001,
+    "W": 36, "H": 32, "B": 5,
+    "center": (18, 16),
+    "island_radii": (6, 5),
+    "bridge_width": 2,
+    "primary_gate": "N",
 })

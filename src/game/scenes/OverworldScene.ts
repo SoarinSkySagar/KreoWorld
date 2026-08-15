@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE } from "../constants";
+import { TILE, type Facing } from "../constants";
 import { applyCameraZoom } from "../camera";
 import { Player } from "../entities/Player";
 import type { RoomKey } from "../rooms";
@@ -22,6 +22,14 @@ interface EnterData {
  * different one — cities are not connected to each other.
  */
 export class OverworldScene extends Phaser.Scene {
+  /** Facing the player should have on first arrival, walking IN from a given gate. */
+  private static readonly FACE_INTO: Record<Gate["side"], Facing> = {
+    N: "down",
+    S: "up",
+    W: "right",
+    E: "left",
+  };
+
   private player!: Player;
   private solids!: Phaser.Physics.Arcade.StaticGroup;
   private doors!: Phaser.Physics.Arcade.StaticGroup;
@@ -50,9 +58,11 @@ export class OverworldScene extends Phaser.Scene {
     this.buildBorderCollision();
     this.buildHousesAndDecor();
 
+    const isInitialArrival = this.spawn.spawnX === undefined;
     const px = this.spawn.spawnX ?? this.layout.entrance.x;
     const py = this.spawn.spawnY ?? this.layout.entrance.y;
-    this.player = new Player(this, px, py, "up");
+    const facing = isInitialArrival ? OverworldScene.FACE_INTO[this.layout.entranceSide] : "up";
+    this.player = new Player(this, px, py, facing);
     this.physics.add.collider(this.player.sprite, this.solids);
     this.physics.add.overlap(this.player.sprite, this.doors, (_p, zone) => {
       const warp = (zone as Phaser.GameObjects.Zone).getData("warp");
@@ -86,7 +96,7 @@ export class OverworldScene extends Phaser.Scene {
     // keeps the player centered; the baked ground (with roads/ponds) sits on top.
     const pad = 24;
     this.add
-      .tileSprite(-pad * TILE, -pad * TILE, (W + pad * 2) * TILE, (H + pad * 2) * TILE, "grass")
+      .tileSprite(-pad * TILE, -pad * TILE, (W + pad * 2) * TILE, (H + pad * 2) * TILE, this.layout.backdrop)
       .setOrigin(0, 0)
       .setDepth(-2000);
     this.add.image(0, 0, "cityGround").setOrigin(0, 0).setDepth(-1000);

@@ -3,7 +3,7 @@ import { preloadPlayer } from "../entities/Player";
 import { DEFAULT_MAP, type MapKey } from "../maps";
 
 const WORLD = [
-  "grass", "path", "tree_a", "tree_b", "tree_c", "hedge",
+  "grass", "water", "path", "tree_a", "tree_b", "tree_c", "hedge",
   "house_red", "house_red_wide", "house_green", "house_blue", "flower", "bush", "rock",
   "fence_tl", "fence_tm", "fence_tr", "fence_l", "fence_r", "fence_bl", "fence_bm", "fence_br",
 ];

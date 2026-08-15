@@ -22,7 +22,7 @@ export interface RoomSpec {
   furniture: FurniturePlacement[];
 }
 
-export type RoomKey = "home" | "shop" | "lounge" | "hall";
+export type RoomKey = "home" | "shop" | "lounge" | "hall" | "pump";
 
 export const ROOMS: Record<RoomKey, RoomSpec> = {
   home: {
@@ -79,6 +79,23 @@ export const ROOMS: Record<RoomKey, RoomSpec> = {
       { tex: "stools", col: 6, row: 3 },
       { tex: "plant", col: 0, row: 5, solid: true },
       { tex: "plant", col: 9, row: 5, solid: true },
+    ],
+  },
+  pump: {
+    title: "The Elixir Pump",
+    cols: 13,
+    rows: 9,
+    floor: "floor_gray",
+    furniture: [
+      { tex: "shelf", col: 0, row: 0, solid: true },
+      { tex: "shelf", col: 10, row: 0, solid: true },
+      { tex: "tv", col: 5, row: 0, solid: true },
+      { tex: "rug", col: 5, row: 2 },
+      { tex: "counter", col: 4, row: 5, solid: true },
+      { tex: "stools", col: 2, row: 6 },
+      { tex: "stools", col: 9, row: 6 },
+      { tex: "plant", col: 0, row: 6, solid: true },
+      { tex: "plant", col: 11, row: 6, solid: true },
     ],
   },
 };

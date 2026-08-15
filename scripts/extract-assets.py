@@ -50,6 +50,11 @@ world = {
     "fence_bl":       (sv, 4, 17, 1, 1),
     "fence_bm":       (sv, 5, 17, 1, 1),
     "fence_br":       (sv, 6, 17, 1, 1),
+    # Bridge deck (island/pump map): both tile cleanly repeated in their axis.
+    "bridge_h":       (sv, 10, 4, 1, 1),
+    "bridge_v":       (sv, 13, 4, 1, 1),
+    # Plain static water tile (padding backdrop behind the animated pond/moat sprites).
+    "water":          (sv, 12, 1, 1, 1),
 }
 for name, (sh, c, r, w, h) in world.items():
     cut(sh, c, r, w, h, f"{PUB}/world/{name}.png")
