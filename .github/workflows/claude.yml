@@ -9,6 +9,8 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
+  pull_request:
+    types: [opened, synchronize]
 
 jobs:
   claude:
@@ -47,4 +49,34 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr *)'
+
+  auto-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          additional_permissions: |
+            actions: read
+
+          prompt: |
+            Review this pull request. Check for correctness bugs, security issues,
+            and simplification/reuse opportunities. Post the findings as a PR comment.
+
+          claude_args: '--allowed-tools Bash(gh pr comment:*)'
 
