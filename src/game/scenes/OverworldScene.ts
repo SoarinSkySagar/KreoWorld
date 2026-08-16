@@ -10,7 +10,12 @@ interface EnterData {
   mapKey?: MapKey;
   spawnX?: number;
   spawnY?: number;
+  /** Set when arriving through a gate: which side of THIS map we walked in from. */
+  arriveGate?: Gate["side"];
 }
+
+/** Ground texture key per map, so several maps can share the texture cache. */
+export const groundKey = (mapKey: MapKey) => `ground:${mapKey}`;
 
 /**
  * A standalone city. The ground layer (grass + autotiled gravel paths + pond
@@ -33,7 +38,10 @@ export class OverworldScene extends Phaser.Scene {
   private player!: Player;
   private solids!: Phaser.Physics.Arcade.StaticGroup;
   private doors!: Phaser.Physics.Arcade.StaticGroup;
+  private exits!: Phaser.Physics.Arcade.StaticGroup;
   private transitioning = false;
+  /** False until create() has finished building this map; gates update(). */
+  private ready = false;
   private mapKey: MapKey = DEFAULT_MAP;
   private layout = MAPS[DEFAULT_MAP];
   private spawn: EnterData = {};
@@ -47,26 +55,30 @@ export class OverworldScene extends Phaser.Scene {
     this.layout = MAPS[this.mapKey];
     this.spawn = data ?? {};
     this.transitioning = false;
+    this.ready = false;
   }
 
   create(): void {
     this.solids = this.physics.add.staticGroup();
     this.doors = this.physics.add.staticGroup();
+    this.exits = this.physics.add.staticGroup();
 
     this.buildGround();
     this.buildWater();
     this.buildBorderCollision();
     this.buildHousesAndDecor();
+    this.buildExitGates();
 
-    const isInitialArrival = this.spawn.spawnX === undefined;
-    const px = this.spawn.spawnX ?? this.layout.entrance.x;
-    const py = this.spawn.spawnY ?? this.layout.entrance.y;
-    const facing = isInitialArrival ? OverworldScene.FACE_INTO[this.layout.entranceSide] : "up";
+    const { x: px, y: py, facing } = this.resolveSpawn();
     this.player = new Player(this, px, py, facing);
     this.physics.add.collider(this.player.sprite, this.solids);
     this.physics.add.overlap(this.player.sprite, this.doors, (_p, zone) => {
       const warp = (zone as Phaser.GameObjects.Zone).getData("warp");
       this.enterHouse(warp);
+    });
+    this.physics.add.overlap(this.player.sprite, this.exits, (_p, zone) => {
+      const gate = (zone as Phaser.GameObjects.Zone).getData("gate") as Gate;
+      this.travel(gate);
     });
 
     const cam = this.cameras.main;
@@ -80,11 +92,16 @@ export class OverworldScene extends Phaser.Scene {
     );
 
     this.showBanner();
+    this.ready = true;
   }
 
   private onResize = () => applyCameraZoom(this);
 
   update(): void {
+    // Phaser keeps ticking update() around a scene restart, when create() has
+    // not rebuilt the player yet and the old sprite's body is already gone.
+    // Skip those frames rather than touching a destroyed object.
+    if (!this.ready) return;
     this.player.update();
   }
 
@@ -99,7 +116,79 @@ export class OverworldScene extends Phaser.Scene {
       .tileSprite(-pad * TILE, -pad * TILE, (W + pad * 2) * TILE, (H + pad * 2) * TILE, this.layout.backdrop)
       .setOrigin(0, 0)
       .setDepth(-2000);
-    this.add.image(0, 0, "cityGround").setOrigin(0, 0).setDepth(-1000);
+    this.add.image(0, 0, groundKey(this.mapKey)).setOrigin(0, 0).setDepth(-1000);
+  }
+
+  /**
+   * Where the player stands (and which way they face) on entering this map:
+   * returning from a house uses the stored spot; arriving through a gate puts
+   * them just inside that gate facing inward; a cold start uses the map's own
+   * entrance. Keeping all three in one place avoids the spawn drifting out of
+   * sync with the gate that was actually used.
+   */
+  private resolveSpawn(): { x: number; y: number; facing: Facing } {
+    if (this.spawn.spawnX !== undefined && this.spawn.spawnY !== undefined) {
+      return { x: this.spawn.spawnX, y: this.spawn.spawnY, facing: "up" };
+    }
+    const side = this.spawn.arriveGate;
+    if (side) {
+      const gate = this.layout.gates.find((g) => g.side === side);
+      if (gate) {
+        const { width: W, height: H, border: B } = this.layout;
+        const centre = (gate.start + gate.length / 2) * TILE;
+        // One tile inside the border so we're clear of the gate zone itself,
+        // otherwise the arrival overlap would immediately fire again.
+        const inset = (B + 1) * TILE;
+        const pos =
+          side === "N" ? { x: centre, y: inset }
+          : side === "S" ? { x: centre, y: H * TILE - inset }
+          : side === "W" ? { x: inset, y: centre }
+          : { x: W * TILE - inset, y: centre };
+        return { ...pos, facing: OverworldScene.FACE_INTO[side] };
+      }
+    }
+    return {
+      x: this.layout.entrance.x,
+      y: this.layout.entrance.y,
+      facing: OverworldScene.FACE_INTO[this.layout.entranceSide],
+    };
+  }
+
+  /** Trigger zones filling each linked gate's opening; walking in travels. */
+  private buildExitGates(): void {
+    const { width: W, height: H } = this.layout;
+    for (const gate of this.layout.gates) {
+      if (!gate.to) continue; // unlinked gate = dead end
+      const span = gate.length * TILE;
+      const thickness = TILE;
+      let x: number, y: number, w: number, h: number;
+      if (gate.side === "N" || gate.side === "S") {
+        x = gate.start * TILE;
+        w = span;
+        h = thickness;
+        y = gate.side === "N" ? 0 : H * TILE - thickness;
+      } else {
+        y = gate.start * TILE;
+        h = span;
+        w = thickness;
+        x = gate.side === "W" ? 0 : W * TILE - thickness;
+      }
+      const zone = this.add.zone(x, y, w, h).setOrigin(0, 0);
+      this.physics.add.existing(zone, true);
+      zone.setData("gate", gate);
+      this.exits.add(zone);
+    }
+  }
+
+  /** Fade out and hand off to the linked map, arriving at its matching gate. */
+  private travel(gate: Gate): void {
+    if (this.transitioning || !gate.to || !gate.toGate) return;
+    this.transitioning = true;
+    this.player.sprite.setVelocity(0, 0);
+    this.cameras.main.fadeOut(250);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.start("OverworldScene", { mapKey: gate.to, arriveGate: gate.toGate });
+    });
   }
 
   private buildWater(): void {
