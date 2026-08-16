@@ -91,11 +91,22 @@ export class OverworldScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize, this),
     );
 
+    this.input.keyboard!.on("keydown-M", this.openWorldMap, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      this.input.keyboard!.off("keydown-M", this.openWorldMap, this),
+    );
+
     this.showBanner();
     this.ready = true;
   }
 
   private onResize = () => applyCameraZoom(this);
+
+  private openWorldMap(): void {
+    if (this.transitioning) return;
+    this.scene.pause();
+    this.scene.launch("WorldMapScene", { currentMapKey: this.mapKey });
+  }
 
   update(): void {
     // Phaser keeps ticking update() around a scene restart, when create() has
