@@ -108,6 +108,23 @@ def load_tex(name, cat="world"):
     return _tex_cache[key]
 
 
+def attach_links(gates, links, name):
+    """Attach a travel destination to each gate: `links` maps a side ("N"/"S"/
+    "E"/"W") to {"to": <map key>, "gate": <side on that map>}. Walking into a
+    linked gate warps the player to the matching gate of the destination map
+    (OverworldScene reads this; unlinked gates stay dead ends).
+
+    Fails loudly on a link naming a side with no gate — that combination would
+    silently produce an unreachable road, which is exactly the class of bug
+    the layout overlap assertion already guards against elsewhere."""
+    by_side = {g["side"]: g for g in gates}
+    for side, dest in links.items():
+        if side not in by_side:
+            raise SystemExit(f"[{name}] link on side {side!r} but there is no gate there")
+        by_side[side]["to"] = dest["to"]
+        by_side[side]["toGate"] = dest["gate"]
+
+
 def build_city(cfg):
     """Generate one city from a config dict. See the bottom of this file for
     the three configs actually used. Fixed geometry (map size, border
@@ -140,6 +157,7 @@ def build_city(cfg):
             gates.append({"side": "W", "start": sr, "length": ROAD_W})
         if "E" in extra_street["ends"]:
             gates.append({"side": "E", "start": sr, "length": ROAD_W})
+    attach_links(gates, cfg.get("links", {}), name)
 
     # --- roads: vertical avenue (only reaches the border on its open ends) +
     # horizontal streets (the chosen extra_street reaches the border on its
@@ -441,15 +459,19 @@ def build_pump(cfg):
                     vals.append(v)
         return (min(vals) if want_min else max(vals)) if vals else None
 
+    # Bridges run from the island edge all the way OUT to the map border. They
+    # must reach the border because that is where OverworldScene puts each
+    # gate's trigger zone — stopping short at `B` left the exits stranded
+    # behind solid water, so the island was a one-way trip.
     n_span = range(cx - bw // 2, cx - bw // 2 + bw)
     n_edge = island_edge(n_span, "x", want_min=True)
-    bridge_n = [n_span[0], B, bw, n_edge - B]
+    bridge_n = [n_span[0], 0, bw, n_edge]
 
     ew_span = range(cy - bw // 2, cy - bw // 2 + bw)
     w_edge = island_edge(ew_span, "y", want_min=True)
-    bridge_w_side = [B, ew_span[0], w_edge - B, bw]
+    bridge_w_side = [0, ew_span[0], w_edge, bw]
     e_edge = island_edge(ew_span, "y", want_min=False)
-    bridge_e_side = [e_edge + 1, ew_span[0], (W - B) - (e_edge + 1), bw]
+    bridge_e_side = [e_edge + 1, ew_span[0], W - (e_edge + 1), bw]
     bridges = [bridge_n, bridge_w_side, bridge_e_side]
 
     gates = [
@@ -457,6 +479,7 @@ def build_pump(cfg):
         {"side": "W", "start": ew_span[0], "length": bw},
         {"side": "E", "start": ew_span[0], "length": bw},
     ]
+    attach_links(gates, cfg.get("links", {}), name)
 
     def _rect_overlap(a, b):
         ax, ay, aw, ah = a
@@ -574,6 +597,197 @@ def build_pump(cfg):
     save_preview(name, ground, water_interior, houses, decor, entrance, W, H)
 
 
+def build_road(cfg):
+    """Generate a connecting roadway between two areas, with a side branch to
+    the island.
+
+    Geometry: one MAIN road running the full length of the map along `axis`
+    ("V" = vertical on screen, "H" = horizontal), plus one short BRANCH road
+    leaving the main road's side and running to a third gate. Three gates
+    total: the two main-road ends, and the branch end.
+
+    Deliberately unlike the cities: gravel only, NO water anywhere, no houses,
+    no fences, and light roadside decor (mostly flowers/bushes, a few trees)
+    rather than the cities' dense forest wall. The map edges off-road are
+    still tree-lined so the corridor reads as enclosed."""
+    name = cfg["name"]
+    rng = random.Random(cfg["seed"])
+    W, H = cfg["W"], cfg["H"]
+    B = cfg["B"]                       # tree-margin thickness at the map edge
+    RW = cfg.get("road_w", 4)          # road width
+    axis = cfg["axis"]                 # "V" (vertical) or "H" (horizontal)
+    main_at = cfg["main_at"]           # main road's fixed coordinate (x if V, y if H)
+    branch_side = cfg["branch_side"]   # which border the branch exits ("E"/"W"/"N"/"S")
+    branch_at = cfg["branch_at"]       # branch's fixed coordinate along the main axis
+
+    if axis == "V":
+        main = [main_at, 0, RW, H]                      # full height
+        main_gates = [{"side": "N", "start": main_at, "length": RW},
+                      {"side": "S", "start": main_at, "length": RW}]
+        if branch_side == "E":
+            branch = [main_at + RW, branch_at, W - (main_at + RW), RW]
+        else:  # "W"
+            branch = [0, branch_at, main_at, RW]
+        branch_gate = {"side": branch_side, "start": branch_at, "length": RW}
+    else:  # "H"
+        main = [0, main_at, W, RW]                      # full width
+        main_gates = [{"side": "W", "start": main_at, "length": RW},
+                      {"side": "E", "start": main_at, "length": RW}]
+        if branch_side == "S":
+            branch = [branch_at, main_at + RW, RW, H - (main_at + RW)]
+        else:  # "N"
+            branch = [branch_at, 0, RW, main_at]
+        branch_gate = {"side": branch_side, "start": branch_at, "length": RW}
+
+    gates = main_gates + [branch_gate]
+    attach_links(gates, cfg.get("links", {}), name)
+    roads = [main, branch]
+
+    # --- bake ground: grass everywhere, gravel on the roads ------------------
+    path_cells = rects_to_cells(roads, W, H)
+
+    def sig_for(cell, region):
+        x, y = cell
+        def grass(nx, ny):
+            if not (0 <= nx < W and 0 <= ny < H):
+                return True  # outside the map reads as grass so edges autotile
+            return (nx, ny) not in region
+        return (grass(x, y - 1), grass(x + 1, y), grass(x, y + 1), grass(x - 1, y))
+
+    ground = Image.new("RGBA", (W * T, H * T))
+    g = tile_img(GRASS_TILE)
+    for y in range(H):
+        for x in range(W):
+            ground.alpha_composite(g, (x * T, y * T))
+    for cell in path_cells:
+        cr = DIRT.get(sig_for(cell, path_cells))
+        img = tile_img(cr) if cr is not None else CLEAN_DIRT
+        ground.alpha_composite(img, (cell[0] * T, cell[1] * T))
+
+    os.makedirs(f"{PUB}/maps", exist_ok=True)
+    ground.save(f"{PUB}/maps/{name}_ground.png")
+
+    # --- decor: tree margin at the edges, flowers/bushes along the verges ----
+    occ = [[False] * W for _ in range(H)]
+    def mark(x, y, w, h):
+        for yy in range(y, y + h):
+            for xx in range(x, x + w):
+                if 0 <= xx < W and 0 <= yy < H:
+                    occ[yy][xx] = True
+    for r in roads:
+        mark(*r)
+
+    decor = []
+    def add(tex, left, bottom, w, solid, foot_h=1):
+        decor.append({"tex": tex, "left": left, "bottom": bottom, "w": w, "solid": solid})
+        mark(left, bottom - foot_h + 1, w, foot_h)
+
+    def free(x, y, w, h):
+        return all(0 <= x + i < W and 0 <= y + j < H and not occ[y + j][x + i]
+                   for i in range(w) for j in range(h))
+
+    def in_gate_band(x, y, margin=1):
+        for gt in gates:
+            s0, s1 = gt["start"] - margin, gt["start"] + gt["length"] - 1 + margin
+            if gt["side"] == "N" and y < B and s0 <= x <= s1:
+                return True
+            if gt["side"] == "S" and y >= H - B and s0 <= x <= s1:
+                return True
+            if gt["side"] == "W" and x < B and s0 <= y <= s1:
+                return True
+            if gt["side"] == "E" and x >= W - B and s0 <= y <= s1:
+                return True
+        return False
+
+    # Tree margin walling off the map edge (skipping gate openings), so the
+    # corridor is enclosed without the cities' full-depth forest.
+    for y in range(H):
+        for x in range(W):
+            edge = x < B or x >= W - B or y < B or y >= H - B
+            if not edge or in_gate_band(x, y) or occ[y][x]:
+                continue
+            if x + 1 < W and free(x, y - 2, 2, 3):
+                add(rng.choice(TREES), x, y, 2, True, foot_h=3)
+
+    # Padding forest beyond the map edge (decorative only, matches the cities),
+    # leaving each gate's sightline open.
+    def in_pad_gate_sightline(x, y):
+        for gt in gates:
+            s0, s1 = gt["start"] - 1, gt["start"] + gt["length"]
+            if gt["side"] in ("N", "S") and s0 <= x <= s1:
+                return True
+            if gt["side"] in ("E", "W") and s0 <= y <= s1:
+                return True
+        return False
+
+    PAD_FOREST_EXTRA = 22
+    for y in range(-PAD_FOREST_EXTRA, H + PAD_FOREST_EXTRA, 2):
+        for x in range(-PAD_FOREST_EXTRA, W + PAD_FOREST_EXTRA, 2):
+            if 0 <= x < W and 0 <= y < H:
+                continue
+            if in_pad_gate_sightline(x, y):
+                continue
+            add(rng.choice(TREES), x, y, 2, False, foot_h=3)
+
+    # Roadside verges: mostly flowers/bushes, only the occasional tree.
+    road_mask = path_cells
+    def near_road(x, y, r=2):
+        return any((x + dx, y + dy) in road_mask
+                   for dx in range(-r, r + 1) for dy in range(-r, r + 1))
+
+    for y in range(B, H - B):
+        for x in range(B, W - B):
+            if occ[y][x]:
+                continue
+            p = rng.random()
+            if near_road(x, y):
+                # Verges: flowers/bushes cluster along the road, plus the odd tree.
+                if p < 0.34:
+                    add(rng.choice(["flower", "bush", "flower", "flower"]), x, y, 1, False)
+                elif p < 0.38 and x + 1 < W - B and y - 2 >= B and free(x, y - 2, 2, 3):
+                    add(rng.choice(TREES), x, y, 2, True, foot_h=3)
+            else:
+                # Open field away from the road stays sparse — the corridor is
+                # the subject, so this reads as meadow, not a flower carpet.
+                if p < 0.10 and x + 1 < W - B and y - 2 >= B and free(x, y - 2, 2, 3):
+                    add(rng.choice(TREES), x, y, 2, True, foot_h=3)
+                elif p < 0.20:
+                    add(rng.choice(["flower", "bush", "flower"]), x, y, 1, False)
+                elif p < 0.23:
+                    add("rock", x, y, 1, True)
+
+    # --- entrance: spawn just inside the primary gate ------------------------
+    pg = next(gt for gt in gates if gt["side"] == cfg["primary_gate"])
+    center = pg["start"] + pg["length"] / 2
+    if pg["side"] == "S":
+        entrance = {"x": center * T, "y": (H - B) * T}
+    elif pg["side"] == "N":
+        entrance = {"x": center * T, "y": B * T}
+    elif pg["side"] == "W":
+        entrance = {"x": B * T, "y": center * T}
+    else:  # "E"
+        entrance = {"x": (W - B) * T, "y": center * T}
+
+    layout = {
+        "width": W, "height": H, "tile": T, "border": B, "backdrop": "grass",
+        "entranceSide": cfg["primary_gate"],
+        "gates": gates,
+        "entrance": entrance,
+        "houses": [],
+        "roads": roads, "spurs": [], "ponds": [],
+        "waterInterior": [],   # roads have no water at all
+        "decor": decor,
+    }
+    os.makedirs(f"{ROOT}/src/game/maps", exist_ok=True)
+    with open(f"{ROOT}/src/game/maps/{name}.json", "w") as f:
+        json.dump(layout, f, indent=0)
+
+    print(f"[{name}] ground {ground.size}  axis={axis}  decor={len(decor)}  "
+          f"gates={[(g['side'], g.get('to')) for g in gates]}")
+
+    save_preview(name, ground, [], [], decor, entrance, W, H)
+
+
 def save_preview(name, ground, water_interior, houses, decor, entrance, W, H):
     """Composite a 2x preview PNG for visual verification (same data the
     engine renders, so this is a reliable stand-in for a live screenshot)."""
@@ -613,6 +827,10 @@ build_city({
     "primary_gate": "W",
     "col_sets": [[7, 13, 19, 42, 48, 54], [7, 13, 19, 42, 48, 54], [9, 16, 44, 51]],
     "ponds": [[22, 7, 6, 7], [35, 24, 6, 5]],
+    "links": {
+        "W": {"to": "road-west", "gate": "S"},
+        "E": {"to": "road-east", "gate": "S"},
+    },
 })
 
 build_city({
@@ -623,6 +841,10 @@ build_city({
     "primary_gate": "S",
     "col_sets": [[6, 12, 18, 43, 49, 55], [8, 14, 20, 45, 51, 57], [10, 17, 46, 53]],
     "ponds": [[23, 7, 6, 7], [36, 24, 6, 5]],
+    "links": {
+        "S": {"to": "road-west", "gate": "N"},           # down the west road to town-main
+        "E": {"to": "road-north", "gate": "W"},          # across the top road to town-c
+    },
 })
 
 build_city({
@@ -633,6 +855,10 @@ build_city({
     "primary_gate": "S",
     "col_sets": [[8, 14, 20, 41, 47, 53], [6, 12, 18, 43, 49, 55], [11, 18, 45, 52]],
     "ponds": [[24, 7, 5, 7], [36, 24, 6, 5]],
+    "links": {
+        "S": {"to": "road-east", "gate": "N"},           # down the east road to town-main
+        "W": {"to": "road-north", "gate": "E"},          # across the top road to town-b
+    },
 })
 
 # --- the central hub ("the Pump") ---------------------------------------------
@@ -644,4 +870,168 @@ build_pump({
     "island_radii": (6, 5),
     "bridge_width": 2,
     "primary_gate": "N",
+    "links": {
+        "N": {"to": "road-north", "gate": "S"},
+        "W": {"to": "road-west", "gate": "E"},
+        "E": {"to": "road-east", "gate": "W"},
+    },
 })
+
+# --- the three connecting roads ----------------------------------------------
+# World shape: a triangle with town-main at the bottom point, town-b top-left
+# and town-c top-right. The two side roads run VERTICALLY on screen, the top
+# road runs HORIZONTALLY, and each one branches inward to a gate of the island
+# sitting in the middle of the triangle.
+
+build_road({
+    "name": "road-west",                # town-b (N) <-> town-main (S)
+    "seed": 5150,
+    "W": 40, "H": 64, "B": 5,
+    "axis": "V",
+    "main_at": 8,                       # main road hugs the map's west side...
+    "branch_side": "E", "branch_at": 30,  # ...so the branch runs east, inward to the island
+    "primary_gate": "N",
+    "links": {
+        "N": {"to": "town-b", "gate": "S"},
+        "S": {"to": "town-main", "gate": "W"},
+        "E": {"to": "pump", "gate": "W"},
+    },
+})
+
+build_road({
+    "name": "road-east",                # town-c (N) <-> town-main (S)
+    "seed": 6260,
+    "W": 40, "H": 64, "B": 5,
+    "axis": "V",
+    "main_at": 28,                      # main road hugs the map's east side...
+    "branch_side": "W", "branch_at": 30,  # ...so the branch runs west, inward to the island
+    "primary_gate": "N",
+    "links": {
+        "N": {"to": "town-c", "gate": "S"},
+        "S": {"to": "town-main", "gate": "E"},
+        "W": {"to": "pump", "gate": "E"},
+    },
+})
+
+build_road({
+    "name": "road-north",               # town-b (W) <-> town-c (E)
+    "seed": 7370,
+    "W": 64, "H": 40, "B": 5,
+    "axis": "H",
+    "main_at": 8,                       # main road hugs the map's north side...
+    "branch_side": "S", "branch_at": 30,  # ...so the branch runs south, inward to the island
+    "primary_gate": "W",
+    "links": {
+        "W": {"to": "town-b", "gate": "E"},
+        "E": {"to": "town-c", "gate": "W"},
+        "S": {"to": "pump", "gate": "N"},
+    },
+})
+
+
+# --- world validation ---------------------------------------------------------
+def validate_world():
+    """Assert the finished world is actually traversable.
+
+    Two failure modes have bitten this project already, both invisible in the
+    generated preview images:
+      1. a link pointing at a gate that doesn't exist / isn't reciprocal;
+      2. a gate whose trigger zone sits on ground the player can never reach
+         (the island's bridges once stopped short of the border, stranding all
+         three exits behind solid water — the island became a one-way trip).
+    So: rebuild each map's collision exactly as OverworldScene does, flood-fill
+    from the spawn point, and require every linked gate to be reachable."""
+    from collections import deque
+
+    layouts = {}
+    for fn in os.listdir(f"{ROOT}/src/game/maps"):
+        if fn.endswith(".json"):
+            layouts[fn[:-5]] = json.load(open(f"{ROOT}/src/game/maps/{fn}"))
+
+    def blocked_set(d):
+        W, H, B = d["width"], d["height"], d["border"]
+        blocked = {tuple(c) for c in d["waterInterior"]}
+        for e in d["decor"]:
+            if not e["solid"]:
+                continue
+            rows = [e["bottom"] - 1, e["bottom"]] if e["tex"] == "hedge" else [e["bottom"]]
+            for y in rows:
+                for x in range(e["left"], e["left"] + e["w"]):
+                    blocked.add((x, y))
+        for h in d["houses"]:
+            for y in range(h["bottom"] - 3, h["bottom"] + 1):
+                for x in range(h["left"], h["left"] + h["w"]):
+                    blocked.add((x, y))
+        def in_gate(x, y):
+            for g in d["gates"]:
+                s0, s1 = g["start"], g["start"] + g["length"] - 1
+                if g["side"] == "N" and y < B and s0 <= x <= s1: return True
+                if g["side"] == "S" and y >= H - B and s0 <= x <= s1: return True
+                if g["side"] == "W" and x < B and s0 <= y <= s1: return True
+                if g["side"] == "E" and x >= W - B and s0 <= y <= s1: return True
+            return False
+        for y in range(H):
+            for x in range(W):
+                if (x < B or x >= W - B or y < B or y >= H - B) and not in_gate(x, y):
+                    blocked.add((x, y))
+        return blocked
+
+    def gate_zone(d, g):
+        W, H = d["width"], d["height"]
+        if g["side"] in ("N", "S"):
+            y = 0 if g["side"] == "N" else H - 1
+            return [(x, y) for x in range(g["start"], g["start"] + g["length"])]
+        x = 0 if g["side"] == "W" else W - 1
+        return [(x, y) for y in range(g["start"], g["start"] + g["length"])]
+
+    def arrival_tile(d, side):
+        W, H, B = d["width"], d["height"], d["border"]
+        g = next(x for x in d["gates"] if x["side"] == side)
+        c = (g["start"] + g["length"] / 2) * T
+        inset = (B + 1) * T
+        px, py = {
+            "N": (c, inset), "S": (c, H * T - inset),
+            "W": (inset, c), "E": (W * T - inset, c),
+        }[side]
+        return (int(px // T), int(py // T))
+
+    errors = []
+    for m, d in layouts.items():
+        # link integrity
+        for g in d["gates"]:
+            if "to" not in g:
+                continue
+            dest = layouts.get(g["to"])
+            if dest is None:
+                errors.append(f"{m}.{g['side']} -> unknown map {g['to']}"); continue
+            back = [x for x in dest["gates"] if x["side"] == g["toGate"]]
+            if not back:
+                errors.append(f"{m}.{g['side']} -> {g['to']}.{g['toGate']} (no such gate)"); continue
+            if back[0].get("to") != m:
+                errors.append(f"{m}.{g['side']} -> {g['to']}.{g['toGate']} is not reciprocal")
+
+        linked = [g for g in d["gates"] if g.get("to")]
+        if not linked:
+            continue
+        W, H = d["width"], d["height"]
+        blocked = blocked_set(d)
+        start = arrival_tile(d, linked[0]["side"])
+        if start in blocked:
+            errors.append(f"{m}: spawn tile {start} is blocked"); continue
+        seen, q = {start}, deque([start])
+        while q:
+            x, y = q.popleft()
+            for dx, dy in ((0, -1), (1, 0), (0, 1), (-1, 0)):
+                n = (x + dx, y + dy)
+                if 0 <= n[0] < W and 0 <= n[1] < H and n not in blocked and n not in seen:
+                    seen.add(n); q.append(n)
+        for g in linked:
+            if not any(c in seen for c in gate_zone(d, g)):
+                errors.append(f"{m}.{g['side']} exit -> {g['to']} is UNREACHABLE on foot")
+
+    if errors:
+        raise SystemExit("World validation failed:\n  " + "\n  ".join(errors))
+    print(f"world OK: {len(layouts)} maps, all links reciprocal, all exits reachable")
+
+
+validate_world()

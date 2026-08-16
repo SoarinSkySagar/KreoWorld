@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { preloadPlayer } from "../entities/Player";
-import { DEFAULT_MAP, type MapKey } from "../maps";
+import { DEFAULT_MAP, MAPS, type MapKey } from "../maps";
+import { groundKey } from "./OverworldScene";
 
 const WORLD = [
   "grass", "water", "path", "tree_a", "tree_b", "tree_c", "hedge",
@@ -37,9 +38,15 @@ export class PreloadScene extends Phaser.Scene {
       .setScrollFactor(0);
     this.load.on("progress", (p: number) => label.setText(`loading world… ${Math.round(p * 100)}%`));
 
-    const mapKey = (this.registry.get("initialMapKey") as MapKey) ?? DEFAULT_MAP;
     preloadPlayer(this);
-    this.load.image("cityGround", `/assets/maps/${mapKey}_ground.png`);
+    // Every map's ground image is loaded up front — all seven together are
+    // ~270KB, far cheaper than the alternative: loading on demand meant
+    // OverworldScene.create() had to bail out mid-transition and rebuild
+    // asynchronously, which left the camera faded to black and `update()`
+    // running against a destroyed player. Keep this eager and simple.
+    for (const key of Object.keys(MAPS) as MapKey[]) {
+      this.load.image(groundKey(key), `/assets/maps/${key}_ground.png`);
+    }
     this.load.spritesheet("water_anim", "/assets/world/water_anim.png", { frameWidth: 16, frameHeight: 16 });
     WORLD.forEach((k) => this.load.image(k, `/assets/world/${k}.png`));
     INTERIOR.forEach((k) => this.load.image(k, `/assets/interior/${k}.png`));

@@ -9,12 +9,16 @@
 {
 "side": "S",
 "start": 30,
-"length": 4
+"length": 4,
+"to": "road-east",
+"toGate": "N"
 },
 {
 "side": "W",
 "start": 30,
-"length": 4
+"length": 4,
+"to": "road-north",
+"toGate": "E"
 }
 ],
 "entrance": {

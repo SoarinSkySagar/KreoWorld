@@ -24,6 +24,8 @@ export class InteriorScene extends Phaser.Scene {
   private exitZone!: Phaser.GameObjects.Zone;
   private entry!: InteriorData;
   private transitioning = false;
+  /** False until create() has finished building the room; gates update(). */
+  private ready = false;
 
   constructor() {
     super("InteriorScene");
@@ -32,6 +34,7 @@ export class InteriorScene extends Phaser.Scene {
   init(data: InteriorData): void {
     this.entry = data;
     this.transitioning = false;
+    this.ready = false;
   }
 
   create(): void {
@@ -114,11 +117,14 @@ export class InteriorScene extends Phaser.Scene {
     );
 
     this.showTitle(spec.title);
+    this.ready = true;
   }
 
   private onResize = () => applyCameraZoom(this, 9);
 
   update(): void {
+    // See OverworldScene.update — skip frames around a scene restart.
+    if (!this.ready) return;
     this.player.update();
   }
 
