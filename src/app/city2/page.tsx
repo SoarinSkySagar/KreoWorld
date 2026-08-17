@@ -1,4 +1,4 @@
-import { PhaserGame } from "@/components/game/PhaserGame";
+import { GameShell } from "@/components/game/GameShell";
 
 /**
  * Test route for the third city (south + west exits). Not linked from
@@ -6,9 +6,5 @@ import { PhaserGame } from "@/components/game/PhaserGame";
  * other; this route exists purely to preview/verify this map in isolation.
  */
 export default function City2() {
-  return (
-    <main className="fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-[#0b0e1a]">
-      <PhaserGame className="h-full w-full" mapKey="town-c" />
-    </main>
-  );
+  return <GameShell mapKey="town-c" />;
 }

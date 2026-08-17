@@ -8,6 +8,7 @@
 import type {
   AttackNFT,
   ElixirBalance,
+  InventoryItem,
   LeaderboardEntry,
   Player,
   Season,
@@ -52,6 +53,37 @@ export const seedLoadout = {
   slots: [attacks[1], attacks[0], null, null] as (AttackNFT | null)[],
   bench: [attacks[2], attacks[3], attacks[4]],
 };
+
+export const seedInventory: InventoryItem[] = [
+  {
+    id: "item-vial",
+    name: "Elixir Vial",
+    description: "Restores a little of what the corruption takes.",
+    count: 3,
+    spriteKey: "item-potion",
+  },
+  {
+    id: "item-charm",
+    name: "Ward Charm",
+    description: "Slows the drain while you are away from your universe.",
+    count: 1,
+    spriteKey: "item-charm",
+  },
+  {
+    id: "item-shard",
+    name: "Attestation Shard",
+    description: "A keepsake from your first proven spend.",
+    count: 2,
+    spriteKey: "item-shard",
+  },
+  {
+    id: "item-map",
+    name: "Torn Sea Map",
+    description: "Marks the bridges to the island. Mostly water damage.",
+    count: 1,
+    spriteKey: "item-map",
+  },
+];
 
 export const seedShops: Shop[] = [
   {

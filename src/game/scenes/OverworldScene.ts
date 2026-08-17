@@ -1,13 +1,12 @@
 import * as Phaser from "phaser";
 import { TILE, type Facing } from "../constants";
-import { applyCameraZoom, uiRect } from "../camera";
+import { applyCameraZoom } from "../camera";
 import { Player } from "../entities/Player";
 import type { RoomKey } from "../rooms";
 import { DEFAULT_MAP, MAPS, type Gate, type MapKey } from "../maps";
 import { InteractionManager } from "../interaction/InteractionManager";
 import { populateArea } from "../interaction/populateArea";
 import { MAP_INTERACTIONS } from "../data/interactions";
-import { gameStore } from "@/lib/store/gameStore";
 
 interface EnterData {
   mapKey?: MapKey;
@@ -103,7 +102,6 @@ export class OverworldScene extends Phaser.Scene {
       this.input.keyboard!.off("keydown-M", this.openWorldMap, this),
     );
 
-    this.showBanner();
     this.ready = true;
   }
 
@@ -307,22 +305,6 @@ export class OverworldScene extends Phaser.Scene {
     const zone = this.add.zone(col * TILE, row * TILE, w * TILE, h * TILE).setOrigin(0, 0);
     this.physics.add.existing(zone, true);
     this.solids.add(zone);
-  }
-
-  private showBanner(): void {
-    const universe = gameStore.getState().player?.universeName ?? "Aleph-Null";
-    const view = uiRect(this);
-    const banner = this.add
-      .text(view.x + view.w / 2, view.y + 8, universe, {
-        fontFamily: "monospace",
-        fontSize: "10px",
-        color: "#6ee7ff",
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setResolution(this.cameras.main.zoom)
-      .setDepth(200000);
-    this.tweens.add({ targets: banner, alpha: 0, delay: 2200, duration: 800, onComplete: () => banner.destroy() });
   }
 
   private enterHouse(warp: { room: RoomKey; returnX: number; returnY: number }): void {

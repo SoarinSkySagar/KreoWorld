@@ -86,6 +86,24 @@ export interface Loadout {
 }
 
 // ---------------------------------------------------------------------------
+// Inventory — consumables and keepsakes the player carries
+// ---------------------------------------------------------------------------
+
+/**
+ * Carried items. Unlike attack NFTs these are ordinary game state, not
+ * source-chain identity — which is exactly why the split lives behind
+ * GameService and not in the UI.
+ */
+export interface InventoryItem {
+  id: string;
+  name: string;
+  /** One line on what it does, shown beneath the name. */
+  description: string;
+  count: number;
+  spriteKey: string;
+}
+
+// ---------------------------------------------------------------------------
 // Shops (agent shopkeepers) & meta
 // ---------------------------------------------------------------------------
 
