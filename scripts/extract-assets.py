@@ -80,11 +80,19 @@ interior = {
 for name, (sh, c, r, w, h) in interior.items():
     cut(sh, c, r, w, h, f"{PUB}/interior/{name}.png")
 
-# --- character spritesheet (copy whole strip) ---
+# --- character spritesheets (copy whole strips) ---
 os.makedirs(f"{PUB}/sprites", exist_ok=True)
 shutil.copy(f"{SRC}/modern-interiors/Characters_free/Adam_run_16x16.png", f"{PUB}/sprites/adam_run.png")
 
-print("world:", len(world), "interior:", len(interior), "+ adam_run.png")
+# NPCs only ever stand still, so their 4-frame idle strip is enough.
+npcs = ["Alex", "Amelia", "Bob"]
+for who in npcs:
+    shutil.copy(
+        f"{SRC}/modern-interiors/Characters_free/{who}_idle_16x16.png",
+        f"{PUB}/sprites/{who.lower()}_idle.png",
+    )
+
+print("world:", len(world), "interior:", len(interior), "+ adam_run.png +", len(npcs), "npc idles")
 # report sizes for sanity
 for name in ["tree_a", "house_red", "house_blue"]:
     print(name, Image.open(f"{PUB}/world/{name}.png").size)
