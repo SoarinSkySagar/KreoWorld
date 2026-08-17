@@ -5,7 +5,12 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { Balances } from "./Balances";
 import { InventoryPanel } from "./InventoryPanel";
 import { LoadoutPanel } from "./LoadoutPanel";
+import { PumpPanel } from "./PumpPanel";
 import { StatusBars } from "./StatusBars";
+import { PROOF_STEPS, stepIndex } from "./proofSteps";
+
+/** How often to re-check proofs in flight. The real wait is minutes, so this is cheap. */
+const POLL_MS = 1500;
 
 /**
  * The always-on layer over the game canvas.
@@ -18,8 +23,18 @@ import { StatusBars } from "./StatusBars";
  * here reaches a data source directly (BUILD_PLAN.md §"The one rule").
  */
 export function Hud() {
-  const { player, worldBar, elixir, token, error, overlay, hydrate, toggleOverlay } =
+  const { player, worldBar, elixir, token, error, overlay, proofs, hydrate, toggleOverlay, pollProofs } =
     useGameStore();
+
+  // Proofs are tracked here rather than in the Pump panel: attestation takes
+  // minutes, and the player is meant to close the terminal and keep playing
+  // while it runs.
+  const inFlight = proofs.find((t) => t.status !== "rewarded" && t.status !== "failed");
+  useEffect(() => {
+    if (!inFlight) return;
+    const id = setInterval(() => void pollProofs(), POLL_MS);
+    return () => clearInterval(id);
+  }, [inFlight, pollProofs]);
 
   // Panels are opened from the keyboard first — this is a game, and the player's
   // hands are already on the keys.
@@ -29,6 +44,8 @@ export function Hud() {
       const key = e.key.toLowerCase();
       if (key === "l") toggleOverlay("loadout");
       else if (key === "i") toggleOverlay("inventory");
+      // The Pump has no hotkey on purpose: it is a place you walk to, opened by
+      // its terminal (or by the in-flight proof indicator).
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -51,6 +68,19 @@ export function Hud() {
           </div>
 
           <StatusBars bar={worldBar} />
+
+          {inFlight && (
+            <button
+              type="button"
+              onClick={() => toggleOverlay("pump")}
+              className="pointer-events-auto flex items-center gap-2.5 self-start rounded-lg text-xs text-hud-mute transition-colors hover:text-hud-bone focus-visible:outline-1 focus-visible:outline-hud-proven"
+            >
+              <span aria-hidden className="size-2 animate-pulse rounded-full bg-hud-unproven" />
+              <span className="uppercase tracking-[0.14em]">
+                {PROOF_STEPS[Math.max(0, stepIndex(inFlight.status))].title}
+              </span>
+            </button>
+          )}
 
           {error && (
             <div className="pointer-events-auto flex items-center gap-2 text-xs text-hud-corrupt">
@@ -77,6 +107,7 @@ export function Hud() {
 
       {overlay === "loadout" && <LoadoutPanel />}
       {overlay === "inventory" && <InventoryPanel />}
+      {overlay === "pump" && <PumpPanel />}
     </div>
   );
 }

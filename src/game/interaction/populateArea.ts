@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE } from "../constants";
 import { Npc } from "../entities/Npc";
+import { gameStore } from "@/lib/store/gameStore";
 import type { AreaInteractions } from "../data/interactions";
 import type { InteractionManager } from "./InteractionManager";
 
@@ -31,7 +32,11 @@ export function populateArea(
       x: originX + (obj.col + 0.5) * TILE,
       y: originY + (obj.row + 1) * TILE,
       label: obj.label,
-      run: (ctx) => ctx.say(obj.lines.map((text) => ({ text }))),
+      run: (ctx) =>
+        ctx.say(
+          obj.lines.map((text) => ({ text })),
+          obj.opens ? () => gameStore.getState().toggleOverlay(obj.opens!) : undefined,
+        ),
     });
   }
 

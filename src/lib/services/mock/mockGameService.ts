@@ -87,6 +87,19 @@ export const mockGameService: GameService = {
     return structuredClone(state.player);
   },
 
+  async connectWallet(): Promise<Player> {
+    // Stands in for the wallet handshake; the real one prompts an extension.
+    await delay(500);
+    state.player.walletAddress = "0x8Ae4bC1f2D9e6a37C05B41f8dE2a7c9B3f014D6e";
+    return structuredClone(state.player);
+  },
+
+  async disconnectWallet(): Promise<Player> {
+    await delay(120);
+    state.player.walletAddress = null;
+    return structuredClone(state.player);
+  },
+
   async getWorldBar(): Promise<WorldBar> {
     await delay(120);
     return structuredClone(state.worldBar);
