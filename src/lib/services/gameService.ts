@@ -31,6 +31,12 @@ import type {
 export interface GameService {
   // --- Player & world ---
   getPlayer(): Promise<Player>;
+  /**
+   * Attach a source-chain wallet. It only ever signs source-chain transactions —
+   * nothing on Creditcoin is signed by the player (CLAUDE.md §9).
+   */
+  connectWallet(): Promise<Player>;
+  disconnectWallet(): Promise<Player>;
   getWorldBar(): Promise<WorldBar>;
   /** Convenience read of the stored-progress bar alone. */
   getStoredProgress(): Promise<number>;

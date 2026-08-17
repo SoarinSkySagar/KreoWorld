@@ -1,6 +1,7 @@
 import type { NpcSpec } from "../entities/Npc";
 import type { MapKey } from "../maps";
 import type { RoomKey } from "../rooms";
+import type { OverlayKey } from "@/lib/store/gameStore";
 
 /** A talkable prop — a sign, a screen, a machine. Sits on its own tile; the player stands beside it. */
 export interface ObjectSpec {
@@ -9,6 +10,12 @@ export interface ObjectSpec {
   row: number;
   /** Unattributed narration lines (no speaker name in the box). */
   lines: string[];
+  /**
+   * Panel this prop opens once its lines are read. Machines the player operates
+   * (the Pump terminal, later the shop builder) are real screens, not dialogue —
+   * the lines introduce them, the panel does the work.
+   */
+  opens?: OverlayKey;
 }
 
 /** An area that speaks the moment the player walks in. Tiles, like everything else here. */
@@ -226,10 +233,8 @@ export const ROOM_INTERACTIONS: Partial<Record<RoomKey, AreaInteractions>> = {
         label: "Pump terminal",
         col: 5,
         row: 6,
-        lines: [
-          "THE ELIXIR PUMP — submit a spend for verification.",
-          "The terminal is dark. It isn't wired to anything yet.",
-        ],
+        opens: "pump",
+        lines: ["THE ELIXIR PUMP — mint what you earned, then prove what you spend."],
       },
     ],
   },
