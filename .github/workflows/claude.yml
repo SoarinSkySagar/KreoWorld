@@ -1,5 +1,8 @@
 name: Claude Code
 
+# Mention-triggered only. Automatic review of every PR lives in
+# claude-code-review.yml -- do not add a `pull_request` trigger here, or the
+# `claude` job below will report a permanently-skipped check on every PR.
 on:
   issue_comment:
     types: [created]
@@ -9,8 +12,6 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
-  pull_request:
-    types: [opened, synchronize]
 
 jobs:
   claude:
@@ -21,15 +22,16 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write # Required so Claude can push commits to branches it creates
+      pull-requests: write # Required so Claude can reply on the PR it was tagged from
+      issues: write # Required so Claude can reply on the issue it was tagged from
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 1
 
       - name: Run Claude Code
@@ -49,34 +51,3 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr *)'
-
-  auto-review:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: read
-      id-token: write
-      actions: read # Required for Claude to read CI results on PRs
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Run Claude Code Review
-        id: claude-review
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          additional_permissions: |
-            actions: read
-
-          prompt: |
-            Review this pull request. Check for correctness bugs, security issues,
-            and simplification/reuse opportunities. Post the findings as a PR comment.
-
-          claude_args: '--allowed-tools Bash(gh pr comment:*)'
-
