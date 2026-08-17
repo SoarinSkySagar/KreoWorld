@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { INTERACT_REACH, type Facing } from "../constants";
 import { DialogueBox, type DialogueLine } from "../ui/DialogueBox";
+import { gameStore } from "@/lib/store/gameStore";
 import type { Player } from "../entities/Player";
 
 /** Something the player walks up to and presses E on: an NPC, a sign, a machine. */
@@ -47,6 +48,8 @@ export class InteractionManager {
   private readonly zoneSpent = new Set<TriggerZone>();
   private readonly hint: Phaser.GameObjects.Text;
   private active?: InteractTarget;
+  /** True while a DOM panel (loadout, inventory) owns the screen. */
+  private suspended = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -72,15 +75,30 @@ export class InteractionManager {
     const kb = scene.input.keyboard!;
     kb.on("keydown-E", this.onPress, this);
     kb.on("keydown-SPACE", this.onPress, this);
+    // DOM panels layer over the canvas, so the game must stop reacting while one
+    // is open — otherwise the player walks around behind it. The store is the
+    // existing React<->Phaser bridge, so the pause rides on that rather than on
+    // a second channel.
+    const unsubscribe = gameStore.subscribe((s) => this.setSuspended(s.overlay !== null));
+
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       kb.off("keydown-E", this.onPress, this);
       kb.off("keydown-SPACE", this.onPress, this);
+      unsubscribe();
     });
+
+    this.setSuspended(gameStore.getState().overlay !== null);
+  }
+
+  private setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    this.hint.setVisible(false);
+    this.player.setFrozen(suspended || this.dialogue.isOpen);
   }
 
   /** Held keys auto-repeat; only the initial press should act, or dialogue self-advances. */
   private onPress = (event: KeyboardEvent): void => {
-    if (event.repeat) return;
+    if (event.repeat || this.suspended) return;
     if (this.dialogue.isOpen) {
       this.dialogue.advance();
       return;
@@ -96,9 +114,9 @@ export class InteractionManager {
     this.zones.push(zone);
   }
 
-  /** True while dialogue owns the screen — scenes should suppress their own input. */
+  /** True while dialogue or a DOM panel owns the screen — scenes must suppress their own input. */
   get busy(): boolean {
-    return this.dialogue.isOpen;
+    return this.dialogue.isOpen || this.suspended;
   }
 
   /** Show dialogue, freezing the player until it closes. */
@@ -112,6 +130,7 @@ export class InteractionManager {
   }
 
   update(): void {
+    if (this.suspended) return;
     if (this.dialogue.isOpen) {
       this.hint.setVisible(false);
       return;

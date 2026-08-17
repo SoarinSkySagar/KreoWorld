@@ -1,4 +1,4 @@
-import { PhaserGame } from "@/components/game/PhaserGame";
+import { GameShell } from "@/components/game/GameShell";
 
 /**
  * Test route for the central hub ("the Pump") — a small island in a moat,
@@ -6,9 +6,5 @@ import { PhaserGame } from "@/components/game/PhaserGame";
  * Not linked from anywhere in the game yet; standalone for preview/verification.
  */
 export default function Island() {
-  return (
-    <main className="fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-[#0b0e1a]">
-      <PhaserGame className="h-full w-full" mapKey="pump" />
-    </main>
-  );
+  return <GameShell mapKey="pump" />;
 }

@@ -16,6 +16,7 @@
 import type {
   ClaimResult,
   ElixirBalance,
+  InventoryItem,
   LeaderboardEntry,
   Loadout,
   Player,
@@ -54,6 +55,15 @@ export interface GameService {
 
   // --- Identity ---
   getLoadout(): Promise<Loadout>;
+  /**
+   * Equip `attackId` into `slotIndex`, or pass `null` to clear the slot and
+   * return whatever was there to the bench. Returns the resulting loadout so the
+   * caller never has to reconstruct it locally.
+   */
+  equipAttack(slotIndex: number, attackId: string | null): Promise<Loadout>;
+
+  // --- Inventory ---
+  getInventory(): Promise<InventoryItem[]>;
 
   // --- Shops & meta ---
   listShops(): Promise<Shop[]>;

@@ -1,26 +1,72 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/**
+ * The app is always a full-screen dark game canvas, so there is no light theme
+ * to switch to — the palette below is the one palette.
+ *
+ * The two accent colours carry meaning and are used consistently everywhere:
+ *   proven   (cyan)  — settled, on-chain, counted. Also the in-canvas UI accent,
+ *                      so the DOM HUD and the Phaser dialogue box read as one system.
+ *   unproven (amber) — earned but not yet proven, and therefore not yet real.
+ * Never use one where the other is meant; the colour is the explanation.
+ */
+@theme {
+  --color-hud-ink: #070b14;
+  --color-hud-raised: #0e1626;
+  --color-hud-edge: #1d2b44;
+  --color-hud-bone: #dbe4f2;
+  --color-hud-mute: #7d8aa3;
+  --color-hud-proven: #6ee7ff;
+  --color-hud-unproven: #d8a33c;
+  --color-hud-corrupt: #b04a6e;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  background: var(--color-hud-ink);
+  color: var(--color-hud-bone);
+}
+
+/**
+ * The signature material: an unsettled fill. Stored progress is drawn as
+ * hatching rather than a solid bar because it has not been proven yet — it reads
+ * as pencil next to the proven bar's ink, and the slow drift keeps it looking
+ * provisional rather than banked.
+ */
+.hud-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--color-hud-unproven) 0px,
+    var(--color-hud-unproven) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+  background-size: 7.07px 7.07px;
+  animation: hud-drift 2.4s linear infinite;
+}
+
+@keyframes hud-drift {
+  to {
+    background-position: 7.07px 0;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/** Tick scale behind both bars, so a value can be read without a number. */
+.hud-ticks {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--color-hud-edge) 0px,
+    var(--color-hud-edge) 1px,
+    transparent 1px,
+    transparent 10%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-hatch {
+    animation: none;
+  }
 }

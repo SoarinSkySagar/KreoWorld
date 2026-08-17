@@ -14,6 +14,9 @@ import { create } from "zustand";
 import { gameService } from "@/lib/services";
 import type { ElixirBalance, Player, TokenBalance, WorldBar } from "@/lib/services/types";
 
+/** Full-screen DOM panels layered over the canvas. Only one is open at a time. */
+export type OverlayKey = "loadout" | "inventory";
+
 interface GameState {
   player: Player | null;
   worldBar: WorldBar | null;
@@ -21,11 +24,16 @@ interface GameState {
   token: TokenBalance | null;
   loading: boolean;
   error: string | null;
+  /** Which DOM panel currently owns the screen, if any. */
+  overlay: OverlayKey | null;
 
   /** Pull the core HUD snapshot from the service. Safe to call repeatedly. */
   hydrate: () => Promise<void>;
   /** Local optimistic bar update (e.g. drain tick); real values come from hydrate. */
   setWorldBar: (bar: WorldBar) => void;
+  /** Open a panel, or close the open one by passing the key it is already showing. */
+  toggleOverlay: (key: OverlayKey) => void;
+  closeOverlay: () => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -35,6 +43,7 @@ export const useGameStore = create<GameState>((set) => ({
   token: null,
   loading: false,
   error: null,
+  overlay: null,
 
   hydrate: async () => {
     set({ loading: true, error: null });
@@ -52,6 +61,9 @@ export const useGameStore = create<GameState>((set) => ({
   },
 
   setWorldBar: (worldBar) => set({ worldBar }),
+
+  toggleOverlay: (key) => set((s) => ({ overlay: s.overlay === key ? null : key })),
+  closeOverlay: () => set({ overlay: null }),
 }));
 
 /** Non-hook handle for use inside Phaser scenes (outside the React tree). */

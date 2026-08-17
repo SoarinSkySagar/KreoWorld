@@ -17,6 +17,7 @@ import type { GameService } from "../gameService";
 import type {
   ClaimResult,
   ElixirBalance,
+  InventoryItem,
   LeaderboardEntry,
   Loadout,
   Player,
@@ -30,6 +31,7 @@ import type {
 } from "../types";
 import {
   seedElixir,
+  seedInventory,
   seedLeaderboard,
   seedLoadout,
   seedPlayer,
@@ -53,6 +55,7 @@ const state = {
   elixir: structuredClone(seedElixir),
   token: structuredClone(seedToken),
   loadout: structuredClone(seedLoadout),
+  inventory: structuredClone(seedInventory),
   shops: structuredClone(seedShops),
   leaderboard: structuredClone(seedLeaderboard),
   season: structuredClone(seedSeason),
@@ -146,6 +149,34 @@ export const mockGameService: GameService = {
   async getLoadout(): Promise<Loadout> {
     await delay(120);
     return structuredClone(state.loadout);
+  },
+
+  async equipAttack(slotIndex: number, attackId: string | null): Promise<Loadout> {
+    await delay(140);
+    const { loadout } = state;
+    if (slotIndex < 0 || slotIndex >= loadout.maxSlots) {
+      throw new Error(`No such loadout slot: ${slotIndex}`);
+    }
+
+    // Whatever is leaving the slot goes back to the bench, so nothing is ever
+    // destroyed by a swap — these represent owned NFTs.
+    const displaced = loadout.slots[slotIndex];
+    if (displaced) loadout.bench.push(displaced);
+
+    if (attackId === null) {
+      loadout.slots[slotIndex] = null;
+      return structuredClone(loadout);
+    }
+
+    const benchIndex = loadout.bench.findIndex((a) => a.id === attackId);
+    if (benchIndex === -1) throw new Error(`Attack not on the bench: ${attackId}`);
+    loadout.slots[slotIndex] = loadout.bench.splice(benchIndex, 1)[0];
+    return structuredClone(loadout);
+  },
+
+  async getInventory(): Promise<InventoryItem[]> {
+    await delay(120);
+    return structuredClone(state.inventory);
   },
 
   async listShops(): Promise<Shop[]> {
