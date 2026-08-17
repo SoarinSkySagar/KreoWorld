@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { preloadPlayer } from "../entities/Player";
+import { preloadNpcs } from "../entities/Npc";
 import { DEFAULT_MAP, MAPS, type MapKey } from "../maps";
 import { groundKey } from "./OverworldScene";
 
@@ -39,6 +40,7 @@ export class PreloadScene extends Phaser.Scene {
     this.load.on("progress", (p: number) => label.setText(`loading world… ${Math.round(p * 100)}%`));
 
     preloadPlayer(this);
+    preloadNpcs(this);
     // Every map's ground image is loaded up front — all seven together are
     // ~270KB, far cheaper than the alternative: loading on demand meant
     // OverworldScene.create() had to bail out mid-transition and rebuild

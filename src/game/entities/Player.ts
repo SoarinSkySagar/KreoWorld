@@ -21,6 +21,7 @@ export class Player {
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd: Record<"W" | "A" | "S" | "D", Phaser.Input.Keyboard.Key>;
   private shiftKey: Phaser.Input.Keyboard.Key;
+  private frozen = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, facing: Facing = "down") {
     Player.ensureAnimations(scene);
@@ -55,7 +56,26 @@ export class Player {
     });
   }
 
+  /** Which way the player is currently facing (used to aim interactions). */
+  get direction(): Facing {
+    return this.facing;
+  }
+
+  /** Freeze input while a dialogue or menu owns the screen. */
+  setFrozen(frozen: boolean): void {
+    this.frozen = frozen;
+    if (!frozen) return;
+    this.sprite.setVelocity(0, 0);
+    this.sprite.anims.stop();
+    this.sprite.setFrame(IDLE_FRAME[this.facing]);
+  }
+
   update(): void {
+    if (this.frozen) {
+      this.sprite.setVelocity(0, 0);
+      return;
+    }
+
     const left = this.cursors.left.isDown || this.wasd.A.isDown;
     const right = this.cursors.right.isDown || this.wasd.D.isDown;
     const up = this.cursors.up.isDown || this.wasd.W.isDown;

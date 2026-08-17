@@ -35,3 +35,14 @@ export const IDLE_FRAME: Record<Facing, number> = {
 
 /** Approx. vertical tiles visible; drives zoom so it never reads "too zoomed out". */
 export const TARGET_TILES_TALL = 12;
+
+/** NPC idle strips are 4 frames of 16x32 — one per direction, same order as the run groups. */
+export const NPC_IDLE_FRAME: Record<Facing, number> = {
+  right: 0,
+  up: 1,
+  left: 2,
+  down: 3,
+};
+
+/** How close (world px, feet-to-anchor) the player must be to interact. */
+export const INTERACT_REACH = 24;

@@ -1,8 +1,11 @@
 import * as Phaser from "phaser";
 import { TILE } from "../constants";
-import { applyCameraZoom } from "../camera";
+import { applyCameraZoom, uiRect } from "../camera";
 import { Player } from "../entities/Player";
 import { ROOMS, RoomKey } from "../rooms";
+import { InteractionManager } from "../interaction/InteractionManager";
+import { populateArea } from "../interaction/populateArea";
+import { ROOM_INTERACTIONS } from "../data/interactions";
 import type { MapKey } from "../maps";
 
 interface InteriorData {
@@ -22,6 +25,7 @@ export class InteriorScene extends Phaser.Scene {
   private player!: Player;
   private solids!: Phaser.Physics.Arcade.StaticGroup;
   private exitZone!: Phaser.GameObjects.Zone;
+  private interactions!: InteractionManager;
   private entry!: InteriorData;
   private transitioning = false;
   /** False until create() has finished building the room; gates update(). */
@@ -105,6 +109,16 @@ export class InteriorScene extends Phaser.Scene {
     this.physics.add.collider(this.player.sprite, this.solids);
     this.physics.add.overlap(this.player.sprite, this.exitZone, () => this.exit());
 
+    this.interactions = new InteractionManager(this, this.player);
+    populateArea(
+      this,
+      this.interactions,
+      ROOM_INTERACTIONS[this.entry.roomKey] ?? {},
+      this.solids,
+      floorX0,
+      floorY0,
+    );
+
     // Camera: follow + a slightly tighter zoom for the enclosed room.
     const cam = this.cameras.main;
     cam.startFollow(this.player.sprite, true, 1, 1);
@@ -126,6 +140,7 @@ export class InteriorScene extends Phaser.Scene {
     // See OverworldScene.update — skip frames around a scene restart.
     if (!this.ready) return;
     this.player.update();
+    this.interactions.update();
   }
 
   private solidTiles(col: number, row: number, w: number, h: number): void {
@@ -135,14 +150,16 @@ export class InteriorScene extends Phaser.Scene {
   }
 
   private showTitle(title: string): void {
+    const view = uiRect(this);
     const banner = this.add
-      .text(this.scale.width / 2, 24, title, {
+      .text(view.x + view.w / 2, view.y + 8, title, {
         fontFamily: "monospace",
-        fontSize: "18px",
+        fontSize: "10px",
         color: "#6ee7ff",
       })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
+      .setResolution(this.cameras.main.zoom)
       .setDepth(200000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 2000, duration: 800, onComplete: () => banner.destroy() });
   }

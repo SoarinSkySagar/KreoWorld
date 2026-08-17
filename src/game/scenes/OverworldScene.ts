@@ -1,9 +1,12 @@
 import * as Phaser from "phaser";
 import { TILE, type Facing } from "../constants";
-import { applyCameraZoom } from "../camera";
+import { applyCameraZoom, uiRect } from "../camera";
 import { Player } from "../entities/Player";
 import type { RoomKey } from "../rooms";
 import { DEFAULT_MAP, MAPS, type Gate, type MapKey } from "../maps";
+import { InteractionManager } from "../interaction/InteractionManager";
+import { populateArea } from "../interaction/populateArea";
+import { MAP_INTERACTIONS } from "../data/interactions";
 import { gameStore } from "@/lib/store/gameStore";
 
 interface EnterData {
@@ -39,6 +42,7 @@ export class OverworldScene extends Phaser.Scene {
   private solids!: Phaser.Physics.Arcade.StaticGroup;
   private doors!: Phaser.Physics.Arcade.StaticGroup;
   private exits!: Phaser.Physics.Arcade.StaticGroup;
+  private interactions!: InteractionManager;
   private transitioning = false;
   /** False until create() has finished building this map; gates update(). */
   private ready = false;
@@ -81,6 +85,9 @@ export class OverworldScene extends Phaser.Scene {
       this.travel(gate);
     });
 
+    this.interactions = new InteractionManager(this, this.player);
+    populateArea(this, this.interactions, MAP_INTERACTIONS[this.mapKey] ?? {}, this.solids);
+
     const cam = this.cameras.main;
     cam.startFollow(this.player.sprite, true, 1, 1);
     cam.setRoundPixels(true);
@@ -103,7 +110,7 @@ export class OverworldScene extends Phaser.Scene {
   private onResize = () => applyCameraZoom(this);
 
   private openWorldMap(): void {
-    if (this.transitioning) return;
+    if (this.transitioning || this.interactions.busy) return;
     this.scene.pause();
     this.scene.launch("WorldMapScene", { currentMapKey: this.mapKey });
   }
@@ -114,6 +121,7 @@ export class OverworldScene extends Phaser.Scene {
     // Skip those frames rather than touching a destroyed object.
     if (!this.ready) return;
     this.player.update();
+    this.interactions.update();
   }
 
   // --- builders ---------------------------------------------------------------
@@ -303,14 +311,16 @@ export class OverworldScene extends Phaser.Scene {
 
   private showBanner(): void {
     const universe = gameStore.getState().player?.universeName ?? "Aleph-Null";
+    const view = uiRect(this);
     const banner = this.add
-      .text(this.scale.width / 2, 24, universe, {
+      .text(view.x + view.w / 2, view.y + 8, universe, {
         fontFamily: "monospace",
-        fontSize: "18px",
+        fontSize: "10px",
         color: "#6ee7ff",
       })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
+      .setResolution(this.cameras.main.zoom)
       .setDepth(200000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 2200, duration: 800, onComplete: () => banner.destroy() });
   }
