@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { gameService } from "@/lib/services";
-import type { AttackNFT, Element, Loadout } from "@/lib/services/types";
+import type { Element, Loadout, WeaponClass, WeaponNFT } from "@/lib/services/types";
 import { OverlayPanel } from "./OverlayPanel";
 
-/** Muted element tints — enough to tell attacks apart, not enough to shout. */
+/** Muted element tints — enough to tell weapons apart, not enough to shout. */
 const ELEMENT_TINT: Record<Element, string> = {
   fire: "#e0653f",
   water: "#4aa3d8",
@@ -14,10 +14,32 @@ const ELEMENT_TINT: Record<Element, string> = {
   void: "#a06bd0",
 };
 
+/** What each element beats. Shown inline so the chart never has to be memorised. */
+const BEATS: Record<Element, Element> = {
+  fire: "air",
+  air: "earth",
+  earth: "water",
+  water: "void",
+  void: "fire",
+};
+
+/** One-word role per class, so the second axis reads without a legend. */
+const CLASS_ROLE: Record<WeaponClass, string> = {
+  sword: "balanced",
+  axe: "heavy",
+  staff: "ability-led",
+  trident: "repeating",
+  fan: "defensive",
+  slingshot: "unerring",
+};
+
 /**
- * Equip screen. Attacks are NFTs held on the source chain, so this panel reads
- * ownership and arranges it — it never invents an attack. Pick a slot, then pick
- * an attack for it; clearing a slot returns the attack to the bench.
+ * Equip screen. Weapons are NFTs held on the source chain, so this panel reads
+ * ownership and arranges it — it never invents a weapon.
+ *
+ * The four equipped weapons are also the four moves available under FIGHT, so
+ * this is the moveset editor as much as it is the stat screen. Pick a slot, then
+ * pick a weapon for it; clearing a slot returns the weapon to the bench.
  */
 export function LoadoutPanel() {
   const [loadout, setLoadout] = useState<Loadout | null>(null);
@@ -43,25 +65,26 @@ export function LoadoutPanel() {
     };
   }, []);
 
-  const equip = useCallback(async (slotIndex: number, attackId: string | null) => {
+  const equip = useCallback(async (slotIndex: number, weaponId: string | null) => {
     setBusy(true);
     setError(null);
     try {
-      setLoadout(await gameService.equipAttack(slotIndex, attackId));
+      setLoadout(await gameService.equipWeapon(slotIndex, weaponId));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "That attack could not be equipped.");
+      setError(e instanceof Error ? e.message : "That weapon could not be equipped.");
     } finally {
       setBusy(false);
     }
   }, []);
 
-  const power = loadout?.slots.reduce((sum, s) => sum + (s?.power ?? 0), 0) ?? 0;
+  const attack = loadout?.slots.reduce((sum, s) => sum + (s?.attack ?? 0), 0) ?? 0;
 
   return (
     <OverlayPanel title="Loadout" hint="L · close">
       <p className="mb-6 max-w-prose font-mono text-sm leading-relaxed text-hud-mute">
-        Your attacks are held on the source chain. Equipping arranges what you already own —
-        pick a slot, then pick an attack for it.
+        You have no powers of your own — only what you carry. Your weapons are held on the
+        source chain; equipping arranges what you already own. The four in your slots are also
+        your four moves in a fight.
       </p>
 
       {error && (
@@ -79,16 +102,16 @@ export function LoadoutPanel() {
               Equipped
             </h3>
             <p className="font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
-              power <span className="text-base tabular-nums text-hud-bone">{power}</span>
+              attack <span className="text-base tabular-nums text-hud-bone">{attack}</span>
             </p>
           </div>
 
-          <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {loadout.slots.map((slot, i) => (
               <Slot
                 key={i}
                 index={i}
-                attack={slot}
+                weapon={slot}
                 selected={selected === i}
                 busy={busy}
                 onSelect={() => setSelected(i)}
@@ -104,16 +127,16 @@ export function LoadoutPanel() {
             <p className="font-mono text-sm text-hud-mute">Everything you own is equipped.</p>
           ) : (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {loadout.bench.map((attack) => (
-                <li key={attack.id}>
+              {loadout.bench.map((weapon) => (
+                <li key={weapon.id}>
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => equip(selected, attack.id)}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-hud-edge bg-hud-ink px-4 py-3 text-left transition-colors hover:border-hud-proven disabled:opacity-50 focus-visible:outline-1 focus-visible:outline-hud-proven"
+                    onClick={() => equip(selected, weapon.id)}
+                    className="flex w-full items-start justify-between gap-3 rounded-xl border border-hud-edge bg-hud-ink px-4 py-3 text-left transition-colors hover:border-hud-proven disabled:opacity-50 focus-visible:outline-1 focus-visible:outline-hud-proven"
                   >
-                    <AttackLabel attack={attack} />
-                    <span className="font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
+                    <WeaponLabel weapon={weapon} />
+                    <span className="shrink-0 font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
                       to slot {selected + 1}
                     </span>
                   </button>
@@ -129,14 +152,14 @@ export function LoadoutPanel() {
 
 function Slot({
   index,
-  attack,
+  weapon,
   selected,
   busy,
   onSelect,
   onClear,
 }: {
   index: number;
-  attack: AttackNFT | null;
+  weapon: WeaponNFT | null;
   selected: boolean;
   busy: boolean;
   onSelect: () => void;
@@ -158,15 +181,15 @@ function Slot({
           Slot {index + 1}
         </span>
         <div className="mt-1.5">
-          {attack ? (
-            <AttackLabel attack={attack} />
+          {weapon ? (
+            <WeaponLabel weapon={weapon} />
           ) : (
             <span className="font-mono text-sm text-hud-mute">Empty</span>
           )}
         </div>
       </button>
 
-      {attack && (
+      {weapon && (
         <button
           type="button"
           disabled={busy}
@@ -180,18 +203,38 @@ function Slot({
   );
 }
 
-function AttackLabel({ attack }: { attack: AttackNFT }) {
+function WeaponLabel({ weapon }: { weapon: WeaponNFT }) {
   return (
-    <span className="flex items-center gap-2">
-      <span
-        aria-hidden
-        className="size-2.5 shrink-0 rounded-sm"
-        style={{ backgroundColor: ELEMENT_TINT[attack.element] }}
+    <span className="flex min-w-0 items-start gap-2.5">
+      {/* The NFT's own art — the same icon the battle menu shows. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/assets/weapons/${weapon.iconKey}.png`}
+        alt=""
+        width={32}
+        height={32}
+        className="mt-0.5 size-8 shrink-0 [image-rendering:pixelated]"
       />
       <span className="min-w-0">
-        <span className="block truncate font-mono text-sm text-hud-bone">{attack.name}</span>
-        <span className="block font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
-          {attack.rarity} · {attack.power}
+        <span className="flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="size-2.5 shrink-0 rounded-sm"
+            style={{ backgroundColor: ELEMENT_TINT[weapon.element] }}
+          />
+          <span className="truncate font-mono text-sm text-hud-bone">{weapon.name}</span>
+        </span>
+        <span className="mt-0.5 block font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
+          {weapon.weaponClass} · {CLASS_ROLE[weapon.weaponClass]} · atk {weapon.attack}
+        </span>
+        <span className="mt-1 block font-mono text-xs text-hud-mute">
+          <span style={{ color: ELEMENT_TINT[weapon.element] }}>{weapon.ability.name}</span>
+          {" — "}
+          {weapon.ability.description}
+        </span>
+        <span className="mt-0.5 block font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
+          pow {weapon.ability.power} · acc {weapon.ability.accuracy}% · {weapon.ability.uses} uses ·
+          strong vs {BEATS[weapon.element]}
         </span>
       </span>
     </span>

@@ -1,6 +1,9 @@
 import * as Phaser from "phaser";
 import { preloadPlayer } from "../entities/Player";
 import { preloadNpcs } from "../entities/Npc";
+import { preloadBattlers } from "../entities/Enemy";
+import { preloadWeaponIcons } from "./BattleScene";
+import { WEAPON_ICON_KEYS } from "../combat/weapons";
 import { DEFAULT_MAP, MAPS, type MapKey } from "../maps";
 import { groundKey } from "./OverworldScene";
 
@@ -41,6 +44,10 @@ export class PreloadScene extends Phaser.Scene {
 
     preloadPlayer(this);
     preloadNpcs(this);
+    // Battler art and weapon icons are small and needed the instant an encounter
+    // fires, so they load with everything else rather than mid-transition.
+    preloadBattlers(this);
+    preloadWeaponIcons(this, WEAPON_ICON_KEYS);
     // Every map's ground image is loaded up front — all seven together are
     // ~270KB, far cheaper than the alternative: loading on demand meant
     // OverworldScene.create() had to bail out mid-transition and rebuild

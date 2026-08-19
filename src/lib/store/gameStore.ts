@@ -38,6 +38,12 @@ interface GameState {
   /** Which DOM panel currently owns the screen, if any. */
   overlay: OverlayKey | null;
   /**
+   * True while the Phaser battle scene owns the screen. The HUD is world UI —
+   * a battle is its own screen with its own health panels, so the overworld
+   * bars must get out of the way rather than sit on top of them.
+   */
+  inBattle: boolean;
+  /**
    * Proofs submitted this session, newest first. Tracked here rather than in the
    * Pump panel because attestation takes minutes: the player is expected to
    * close the panel and keep playing while it runs.
@@ -51,6 +57,8 @@ interface GameState {
   /** Open a panel, or close the open one by passing the key it is already showing. */
   toggleOverlay: (key: OverlayKey) => void;
   closeOverlay: () => void;
+  /** Called by BattleScene as it opens and closes. */
+  setInBattle: (inBattle: boolean) => void;
 
   connectWallet: () => Promise<void>;
   disconnectWallet: () => Promise<void>;
@@ -71,6 +79,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   loading: false,
   error: null,
   overlay: null,
+  inBattle: false,
   proofs: [],
 
   hydrate: async () => {
@@ -92,6 +101,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   toggleOverlay: (key) => set((s) => ({ overlay: s.overlay === key ? null : key })),
   closeOverlay: () => set({ overlay: null }),
+
+  // A battle takes the screen, so any open panel closes with it.
+  setInBattle: (inBattle) => set(inBattle ? { inBattle, overlay: null } : { inBattle }),
 
   connectWallet: async () => {
     set({ player: await gameService.connectWallet() });

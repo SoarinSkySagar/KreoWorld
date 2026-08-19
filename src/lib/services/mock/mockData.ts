@@ -5,8 +5,8 @@
  * -during-build). Kept here so tuning them never touches UI code.
  */
 
+import { WEAPONS_BY_ID } from "@/game/combat/weapons";
 import type {
-  AttackNFT,
   ElixirBalance,
   InventoryItem,
   LeaderboardEntry,
@@ -14,6 +14,7 @@ import type {
   Season,
   Shop,
   TokenBalance,
+  WeaponNFT,
   WorldBar,
 } from "../types";
 
@@ -40,18 +41,37 @@ export const seedToken: TokenBalance = {
   projectToken: 880,
 };
 
-const attacks: AttackNFT[] = [
-  { id: "atk-ember", name: "Ember Lash", element: "fire", rarity: "rare", power: 34, spriteKey: "atk-ember" },
-  { id: "atk-tide", name: "Tidecaller", element: "water", rarity: "epic", power: 51, spriteKey: "atk-tide" },
-  { id: "atk-quake", name: "Fault Line", element: "earth", rarity: "common", power: 18, spriteKey: "atk-quake" },
-  { id: "atk-gale", name: "Cutting Gale", element: "air", rarity: "rare", power: 29, spriteKey: "atk-gale" },
-  { id: "atk-null", name: "Null Rift", element: "void", rarity: "legendary", power: 77, spriteKey: "atk-null" },
-];
+/**
+ * The starting arsenal. Characters have no innate powers — these five weapons
+ * are the only reason the player can do anything in a fight, and the four
+ * equipped ones are literally the four options under FIGHT.
+ *
+ * How weapons are first acquired is still deferred (CLAUDE.md §15), so for now
+ * the player simply starts with a spread: one of each class role, so every
+ * archetype is reachable without a shop existing yet.
+ */
+const startingWeapons: WeaponNFT[] = [
+  "wpn-emberfang",
+  "wpn-tidecleaver",
+  "wpn-stonecleave",
+  "wpn-zephyrrod",
+  "wpn-deepfork",
+  "wpn-pebblecast",
+].map((id) => {
+  const weapon = WEAPONS_BY_ID.get(id);
+  if (!weapon) throw new Error(`Seed loadout references unknown weapon: ${id}`);
+  return weapon;
+});
 
 export const seedLoadout = {
   maxSlots: 4,
-  slots: [attacks[1], attacks[0], null, null] as (AttackNFT | null)[],
-  bench: [attacks[2], attacks[3], attacks[4]],
+  slots: [
+    startingWeapons[0],
+    startingWeapons[1],
+    startingWeapons[3],
+    null,
+  ] as (WeaponNFT | null)[],
+  bench: [startingWeapons[2], startingWeapons[4], startingWeapons[5]],
 };
 
 export const seedInventory: InventoryItem[] = [
@@ -61,6 +81,7 @@ export const seedInventory: InventoryItem[] = [
     description: "Restores a little of what the corruption takes.",
     count: 3,
     spriteKey: "item-potion",
+    battleUse: { kind: "heal", amount: 40 },
   },
   {
     id: "item-charm",
@@ -68,6 +89,7 @@ export const seedInventory: InventoryItem[] = [
     description: "Slows the drain while you are away from your universe.",
     count: 1,
     spriteKey: "item-charm",
+    battleUse: { kind: "heal", amount: 90 },
   },
   {
     id: "item-shard",

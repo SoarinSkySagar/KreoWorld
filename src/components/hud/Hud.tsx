@@ -23,7 +23,7 @@ const POLL_MS = 1500;
  * here reaches a data source directly (BUILD_PLAN.md §"The one rule").
  */
 export function Hud() {
-  const { player, worldBar, elixir, token, error, overlay, proofs, hydrate, toggleOverlay, pollProofs } =
+  const { player, worldBar, elixir, token, error, overlay, inBattle, proofs, hydrate, toggleOverlay, pollProofs } =
     useGameStore();
 
   // Proofs are tracked here rather than in the Pump panel: attestation takes
@@ -41,6 +41,9 @@ export function Hud() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      // A battle owns the whole screen and binds L/I/etc. itself; the HUD must
+      // not steal them or a menu press would also pop a DOM panel.
+      if (useGameStore.getState().inBattle) return;
       const key = e.key.toLowerCase();
       if (key === "l") toggleOverlay("loadout");
       else if (key === "i") toggleOverlay("inventory");
@@ -50,6 +53,10 @@ export function Hud() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleOverlay]);
+
+  // A battle is its own screen, with its own health panels and message box.
+  // Leaving the overworld bars on top of it would cover the enemy's panel.
+  if (inBattle) return null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10 font-mono">
