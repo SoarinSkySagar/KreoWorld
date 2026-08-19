@@ -305,7 +305,8 @@ pointless*. Never pitch it as "detecting cheaters."
 
 Three seams where the protocol is genuinely load-bearing, all **readability** (source → Creditcoin):
 
-1. **Identity** — attack-loadout NFTs live on the source chain; proving ownership/composition gates power.
+1. **Identity** — **weapon NFTs** live on the source chain; proving ownership/composition gates power.
+   Characters have **no innate powers** — everything a player can do in a fight comes from a weapon.
 2. **Progression (main gate)** — earned elixir is minted on-chain, then **spent/burned**; proving that spend advances the player's universe bar and mints project tokens.
 3. **Value on-ramp (optional)** — real crypto deposited on Sepolia, proven, credited as project tokens.
 
@@ -325,7 +326,7 @@ Cash-*out* to real crypto is **writability** — roadmap only, never a demo depe
 - **Frontend:** Next.js 15 (App Router) shell with **Phaser 3 + TypeScript** embedded for the game canvas. Maps authored in **Tiled**. Wallet connect + Pump UI live in the Next.js shell.
 - **Multiplayer:** **Colyseus** authoritative rooms — only for the central hub. The three cities are single-player (no netcode). Async fallback if netcode fights you.
 - **State:** **Postgres**, owned by an authoritative game server. Client is never trusted.
-- **On-chain:** source contracts on **Sepolia** (elixir mint/spend token, attack-loadout NFTs, optional deposit); **ASC on Creditcoin CC3 testnet**.
+- **On-chain:** source contracts on **Sepolia** (elixir mint/spend token, weapon-loadout NFTs, optional deposit); **ASC on Creditcoin CC3 testnet**.
 - **Worker:** Node + `@gluwa/usc-sdk` + ethers v6 (see §3/§7) bridging Sepolia events → ASC.
 - **Agent shops:** shopkeeper NPCs are **off-chain LLM** services (player prompt as persona + constrained action set). Only ownership/config + token settlement are on-chain. "On-chain agent" is not literal — don't imply LLM inference runs on-chain.
 
@@ -350,7 +351,62 @@ Illustrative interfaces (extend as needed): `getPlayer()`, `getLoadout()`, `getE
 
 ## 15. Deferred — decide during build, don't hardcode around these
 
-Season/carnival mechanics · reward/token numbers · how loadout NFTs are first acquired · one vs
-many shops · spend-on-things vs spend-to-void · cities 2 & 3 content · bar drain rate & caps ·
-achievement-style bounties (roadmap vs v1). When you must assume one to proceed, isolate the
-assumption behind the mock layer so it's swappable.
+Season/carnival mechanics · reward/token numbers · how weapon NFTs are first acquired (seeded for
+now; no drops, no shop) · one vs many shops · spend-on-things vs spend-to-void · cities 2 & 3
+content · bar drain rate & caps · achievement-style bounties (roadmap vs v1). When you must assume
+one to proceed, isolate the assumption behind the mock layer so it's swappable.
+
+---
+
+## 16. Combat, weapons, and The Rescinded
+
+### Weapons are the whole power model
+
+There are no superpowers. A `WeaponNFT` carries one **unique ability**, and the four weapons in
+the loadout slots **are** the four moves under FIGHT — equipping is movesetting, not a stat screen.
+
+Two axes, deliberately doing different jobs (do not collapse them into two multiplier charts —
+that produces unreadable 4x/0.25x swings):
+
+- **Element** (`fire water earth air void`) is the effectiveness chart, a closed 5-cycle:
+  `fire → air → earth → water → void → fire`. Beats = x2, beaten = x0.5, else x1. Nothing to memorise.
+- **Class** (`sword axe staff trident fan slingshot`) is the *role* — stat curve plus which ability
+  archetypes it carries (see `CLASS_PROFILE` in `game/combat/weapons.ts`).
+
+Ability effects are a closed union: `drain · bleed · guard · weaken · multi · pierce`.
+
+### The Rescinded
+
+The one antagonist organisation. An order struck from every ledger: nothing they hold has
+provenance and nothing they do can be attested, so they take elixir from travellers whose
+universes still count. One crimson livery, ranked Whelp → Cutthroat → Marshal → Warden → Gilded
+Warden, plus their construct (Null Engine) and warlord (The Unwrit). They carry real weapons and
+fight exactly the way the player does. **Blightspawn** are the elixir-corrupted fauna they herd
+onto the roads — no organisation, innate abilities.
+
+Enemy characters must stay in this one organisation with one visual identity. Do not invent a
+second faction of humanoids.
+
+### Encounter rules (non-negotiable)
+
+- **Highways only.** `road-west`, `road-east`, `road-north` spawn enemies. Towns and the Pump
+  island never do — that is what makes stepping onto a road a decision. Guarded in both
+  `rollEncounters` and `getEncounterTable`.
+- **Visible, not random.** Enemies stand on the road, roll fresh on every entry, never chase, and
+  flag themselves with `!` when you are near. You choose to walk up; contact starts the fight.
+- Any tier can appear on any road — the sprite is the only warning — but `spawnWeight` makes the
+  heavies rare, so a starting player meeting a warlord is a story, not the default.
+
+### Economy coupling
+
+- A **win** pays `elixir.earned` only — the unbanked side. It never mints on-chain value and never
+  moves `universeHealth`: progress still requires a proven spend (§11).
+- A **loss** forfeits a share of `elixir.earned`. It must **never** touch `elixir.onChain` — that is
+  real minted value. Bank it before you risk it.
+- The client reports the *outcome*; `gameService.resolveBattle` decides the numbers (§12).
+
+### Where it lives
+
+`game/combat/engine.ts` is pure and has **no Phaser import** — all rules live there and are unit
+tested (`bun run test`). `scenes/BattleScene.ts` renders state and collects input; it decides
+nothing. Keep that split: a rule that creeps into the scene is a rule that cannot be tested.

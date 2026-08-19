@@ -14,11 +14,15 @@
  */
 
 import type {
+  BattleOutcome,
+  BattleReward,
   ClaimResult,
   ElixirBalance,
+  EnemySpec,
   InventoryItem,
   LeaderboardEntry,
   Loadout,
+  MapAreaKey,
   Player,
   ProofTicket,
   Season,
@@ -62,11 +66,28 @@ export interface GameService {
   // --- Identity ---
   getLoadout(): Promise<Loadout>;
   /**
-   * Equip `attackId` into `slotIndex`, or pass `null` to clear the slot and
+   * Equip `weaponId` into `slotIndex`, or pass `null` to clear the slot and
    * return whatever was there to the bench. Returns the resulting loadout so the
    * caller never has to reconstruct it locally.
+   *
+   * The four equipped weapons are also the four moves available in battle, so
+   * this call is the moveset editor as much as it is the stat screen.
    */
-  equipAttack(slotIndex: number, attackId: string | null): Promise<Loadout>;
+  equipWeapon(slotIndex: number, weaponId: string | null): Promise<Loadout>;
+
+  // --- Combat ---
+  /**
+   * Which enemies may appear in `area`. Identity, stats and levels live behind
+   * the seam so a real backend can own them; only the tiles they stand on are
+   * client geometry.
+   */
+  getEncounterTable(area: MapAreaKey): Promise<EnemySpec[]>;
+  /**
+   * Settle a finished battle. The client reports *what happened*; the service
+   * decides what it paid or cost. A client-computed reward is never accepted
+   * (CLAUDE.md §12 — the client is never trusted).
+   */
+  resolveBattle(outcome: BattleOutcome): Promise<BattleReward>;
 
   // --- Inventory ---
   getInventory(): Promise<InventoryItem[]>;

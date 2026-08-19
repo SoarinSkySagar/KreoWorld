@@ -55,8 +55,10 @@ Ordered by dependency. Each item assumes the mock layer already exists.
 4. **World interaction systems.** Warps/doors between maps, building interiors, NPC placement,
    dialogue system, interactable objects, trigger zones. Turns walkable maps into a *world*.
    (The Pump, gyms, and shops are all interactables — build the generic system once.)
-5. **Combat scene.** Random-encounter trigger + a self-contained battle scene with minimal
-   stat-based resolution and its UI. One battle type done well. Feeds elixir (mocked).
+5. **Combat scene.** ✅ Done. Visible road encounters (highways only) + a Phaser `BattleScene` with
+   turn-based, type-chart resolution driven by weapon NFTs. Rules live in a pure, unit-tested
+   `game/combat/engine.ts`. Feeds `elixir.earned` (mocked, via `gameService.resolveBattle`).
+   See CLAUDE.md §16.
 6. **HUD & persistent UI.** The **two bars** (stored-progress + universe-health), the
    **loadout screen** (attack-NFT slots, switchable), inventory, token balances. Always-on layer.
 7. **Protocol & economy screens** (all on stubs). The **Elixir Pump / prover center** UI —
@@ -90,7 +92,8 @@ The web2-vs-contract split and chain choice are **decided at the top of this pha
    precompile addresses, resolve `chainKey` at runtime (see CLAUDE.md — it is NOT the EVM chainId).
 3. **Source-chain contracts (Sepolia).** Elixir token with the **mint-then-spend** invariant
    (earned elixir is minted on-chain before it can be spent); the **spend/burn event**
-   (`from`, `value`); attack-loadout NFTs; optional deposit contract for the swap on-ramp.
+   (`from`, `value`); **weapon-loadout NFTs** (class, element, rarity, ability); optional deposit
+   contract for the swap on-ramp.
 4. **ASC on Creditcoin (CC3).** Verify via Block Prover Precompile `0x..FD2`, **require receipt
    status == 1**, **replay protection** per `(chainKey, blockHeight, txIndex)`, decode the spend
    event, credit project tokens + advance the universe bar. (These three guards go in the first
@@ -119,8 +122,8 @@ before buffer runs out.
 1. **Wire web2 → frontend.** Replace all DB-backed stubs. Now the game is fully playable end to
    end **with no chain yet** — auth, movement, combat, earning, balances, leaderboard, hub.
    *This is your safety net:* even if the on-chain loop fights you, you have a demoable game.
-2. **Wire wallet + on-chain identity.** Connect wallet; read attack-loadout NFTs from Sepolia to
-   set power.
+2. **Wire wallet + on-chain identity.** Connect wallet; read weapon-loadout NFTs from Sepolia —
+   they set both the player's attack stat and the moves available in battle.
 3. **Wire the proof loop (the money shot).** earn → claim (mint on Sepolia) → spend → worker
    proves → ASC credits → universe bar visibly rises on screen. Test the full readability path
    hard. This is the beat judges see — prioritize it right after step 1.
@@ -149,6 +152,6 @@ that from being fatal.
 
 ## Decide-during-build (explicitly deferred — don't hardcode around these)
 
-Season/carnival mechanics · reward/token numbers · how loadout NFTs are first acquired · one vs
+Season/carnival mechanics · reward/token numbers · how weapon NFTs are first acquired · one vs
 many shops · Reading-B spend-sinks (spend on *things* vs spend-to-void) · cities 2 & 3 content ·
 bar drain rate & caps · achievement-style bounties (roadmap vs v1).

@@ -7,6 +7,10 @@ import { DEFAULT_MAP, MAPS, type Gate, type MapKey } from "../maps";
 import { InteractionManager } from "../interaction/InteractionManager";
 import { populateArea } from "../interaction/populateArea";
 import { MAP_INTERACTIONS } from "../data/interactions";
+import { Enemy } from "../entities/Enemy";
+import { isEncounterMap, rollEncounters } from "../combat/encounters";
+import { gameService } from "@/lib/services";
+import type { BattleResultKind } from "@/lib/services/types";
 
 interface EnterData {
   mapKey?: MapKey;
@@ -42,7 +46,11 @@ export class OverworldScene extends Phaser.Scene {
   private doors!: Phaser.Physics.Arcade.StaticGroup;
   private exits!: Phaser.Physics.Arcade.StaticGroup;
   private interactions!: InteractionManager;
+  /** Hostiles standing on this map. Empty everywhere except the highways. */
+  private enemies: Enemy[] = [];
   private transitioning = false;
+  /** True while a battle owns the screen, so the overworld stops reacting. */
+  private inBattle = false;
   /** False until create() has finished building this map; gates update(). */
   private ready = false;
   private mapKey: MapKey = DEFAULT_MAP;
@@ -58,6 +66,7 @@ export class OverworldScene extends Phaser.Scene {
     this.layout = MAPS[this.mapKey];
     this.spawn = data ?? {};
     this.transitioning = false;
+    this.inBattle = false;
     this.ready = false;
   }
 
@@ -86,6 +95,7 @@ export class OverworldScene extends Phaser.Scene {
 
     this.interactions = new InteractionManager(this, this.player);
     populateArea(this, this.interactions, MAP_INTERACTIONS[this.mapKey] ?? {}, this.solids);
+    void this.spawnEnemies();
 
     const cam = this.cameras.main;
     cam.startFollow(this.player.sprite, true, 1, 1);
@@ -98,9 +108,12 @@ export class OverworldScene extends Phaser.Scene {
     );
 
     this.input.keyboard!.on("keydown-M", this.openWorldMap, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
-      this.input.keyboard!.off("keydown-M", this.openWorldMap, this),
-    );
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard!.off("keydown-M", this.openWorldMap, this);
+      this.events.off("battle:ended");
+      for (const enemy of this.enemies) enemy.destroy();
+      this.enemies = [];
+    });
 
     this.ready = true;
   }
@@ -108,7 +121,7 @@ export class OverworldScene extends Phaser.Scene {
   private onResize = () => applyCameraZoom(this);
 
   private openWorldMap(): void {
-    if (this.transitioning || this.interactions.busy) return;
+    if (this.transitioning || this.inBattle || this.interactions.busy) return;
     this.scene.pause();
     this.scene.launch("WorldMapScene", { currentMapKey: this.mapKey });
   }
@@ -120,6 +133,86 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.ready) return;
     this.player.update();
     this.interactions.update();
+    this.checkEncounters();
+  }
+
+  // --- encounters ---------------------------------------------------------------
+
+  /**
+   * Roll a fresh set of hostiles for this map. Only the highways spawn them —
+   * the towns and the Pump island are clean, which is what makes stepping onto a
+   * road feel like a choice. Rolled on every entry, so walking a road twice
+   * gives you a different set.
+   */
+  private async spawnEnemies(): Promise<void> {
+    this.enemies = [];
+    if (!isEncounterMap(this.mapKey)) return;
+
+    const table = await gameService.getEncounterTable(this.mapKey);
+    // The scene can be torn down while the table is in flight (the player walked
+    // straight through); don't build sprites into a dead scene.
+    if (!this.ready || !this.scene.isActive()) return;
+
+    for (const placement of rollEncounters(this.mapKey, table)) {
+      this.enemies.push(new Enemy(this, placement));
+    }
+
+    // The battle scene tells us how it went; a beaten enemy is removed so the
+    // road visibly empties as you clear it.
+    this.events.off("battle:ended");
+    this.events.on(
+      "battle:ended",
+      ({ instanceId, result }: { instanceId: string; result: BattleResultKind }) => {
+        this.inBattle = false;
+        this.cameras.main.fadeIn(220);
+        const enemy = this.enemies.find((e) => e.placement.instanceId === instanceId);
+        if (!enemy) return;
+        if (result === "won") {
+          enemy.retire(this);
+        } else {
+          // Survived or ran: the enemy stays, so back off before it reaches you
+          // again. Nudge the player clear so the trigger doesn't fire instantly.
+          this.pushPlayerAway(enemy);
+        }
+      },
+    );
+  }
+
+  /** Distance check per frame; walking within about a tile starts the fight. */
+  private checkEncounters(): void {
+    if (this.inBattle || this.transitioning || this.enemies.length === 0) return;
+    const { x, y } = this.player.sprite;
+    for (const enemy of this.enemies) {
+      if (enemy.update(x, y)) {
+        this.startBattle(enemy);
+        return;
+      }
+    }
+  }
+
+  private startBattle(enemy: Enemy): void {
+    if (this.inBattle || this.interactions.busy) return;
+    this.inBattle = true;
+    this.player.sprite.setVelocity(0, 0);
+    this.scene.pause();
+    this.scene.launch("BattleScene", {
+      spec: enemy.placement.spec,
+      returnTo: "OverworldScene",
+      instanceId: enemy.placement.instanceId,
+    });
+  }
+
+  /**
+   * Shove the player a couple of tiles back from an enemy they did not beat, so
+   * returning to the overworld does not immediately re-trigger the same fight.
+   */
+  private pushPlayerAway(enemy: Enemy): void {
+    const sprite = this.player.sprite;
+    const dx = sprite.x - enemy.sprite.x;
+    const dy = sprite.y - enemy.sprite.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const push = TILE * 3;
+    sprite.setPosition(sprite.x + (dx / len) * push, sprite.y + (dy / len) * push);
   }
 
   // --- builders ---------------------------------------------------------------
