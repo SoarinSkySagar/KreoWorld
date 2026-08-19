@@ -41,6 +41,11 @@ export function PhaserGame({ className, mapKey = DEFAULT_MAP }: { className?: st
       const game = new PhaserLib.Game(createGameConfig(containerRef.current));
       game.registry.set("initialMapKey", mapKey);
       gameRef.current = game;
+      // Dev-only handle so the running game can be driven from the console or a
+      // headless browser (jump to a map, force an encounter). Never in a build.
+      if (process.env.NODE_ENV !== "production") {
+        (window as unknown as { __game?: Phaser.Game }).__game = game;
+      }
     }
 
     void boot();

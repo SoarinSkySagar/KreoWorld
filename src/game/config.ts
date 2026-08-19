@@ -3,6 +3,7 @@ import { PreloadScene } from "./scenes/PreloadScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { InteriorScene } from "./scenes/InteriorScene";
 import { WorldMapScene } from "./scenes/WorldMapScene";
+import { BattleScene } from "./scenes/BattleScene";
 
 /**
  * Builds the Phaser game config bound to a specific parent element. Called only
@@ -30,6 +31,6 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
       default: "arcade",
       arcade: { gravity: { x: 0, y: 0 }, debug: false },
     },
-    scene: [PreloadScene, OverworldScene, InteriorScene, WorldMapScene],
+    scene: [PreloadScene, OverworldScene, InteriorScene, WorldMapScene, BattleScene],
   };
 }

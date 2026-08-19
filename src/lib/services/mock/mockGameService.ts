@@ -13,13 +13,19 @@
  * Nothing here is persisted; state resets on reload.
  */
 
+import { ENEMIES, ENEMIES_BY_ID } from "@/game/combat/enemies";
+import { ENCOUNTER_MAPS } from "@/game/combat/encounters";
 import type { GameService } from "../gameService";
 import type {
+  BattleOutcome,
+  BattleReward,
   ClaimResult,
   ElixirBalance,
+  EnemySpec,
   InventoryItem,
   LeaderboardEntry,
   Loadout,
+  MapAreaKey,
   Player,
   ProofStatus,
   ProofTicket,
@@ -40,6 +46,12 @@ import {
   seedToken,
   seedWorldBar,
 } from "./mockData";
+
+/** Areas that spawn enemies, as plain keys — the service never imports map types. */
+const ENCOUNTER_AREAS: ReadonlySet<string> = ENCOUNTER_MAPS;
+
+/** Share of *unbanked* elixir a loss costs. Minted balance is never touched. */
+const LOSS_RATE = 0.25;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const clamp = (n: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, n));
@@ -164,7 +176,7 @@ export const mockGameService: GameService = {
     return structuredClone(state.loadout);
   },
 
-  async equipAttack(slotIndex: number, attackId: string | null): Promise<Loadout> {
+  async equipWeapon(slotIndex: number, weaponId: string | null): Promise<Loadout> {
     await delay(140);
     const { loadout } = state;
     if (slotIndex < 0 || slotIndex >= loadout.maxSlots) {
@@ -176,15 +188,61 @@ export const mockGameService: GameService = {
     const displaced = loadout.slots[slotIndex];
     if (displaced) loadout.bench.push(displaced);
 
-    if (attackId === null) {
+    if (weaponId === null) {
       loadout.slots[slotIndex] = null;
       return structuredClone(loadout);
     }
 
-    const benchIndex = loadout.bench.findIndex((a) => a.id === attackId);
-    if (benchIndex === -1) throw new Error(`Attack not on the bench: ${attackId}`);
+    const benchIndex = loadout.bench.findIndex((w) => w.id === weaponId);
+    if (benchIndex === -1) throw new Error(`Weapon not on the bench: ${weaponId}`);
     loadout.slots[slotIndex] = loadout.bench.splice(benchIndex, 1)[0];
     return structuredClone(loadout);
+  },
+
+  async getEncounterTable(area: MapAreaKey): Promise<EnemySpec[]> {
+    await delay(90);
+    // Any tier can turn up on any highway — the sprite is the only warning you
+    // get. Keyed by area regardless, so a real backend can vary it later without
+    // the caller changing.
+    if (!ENCOUNTER_AREAS.has(area)) return [];
+    return structuredClone(ENEMIES);
+  },
+
+  async resolveBattle(outcome: BattleOutcome): Promise<BattleReward> {
+    await delay(200);
+    const spec = ENEMIES_BY_ID.get(outcome.enemyId);
+    if (!spec) throw new Error(`Unknown enemy: ${outcome.enemyId}`);
+
+    if (outcome.result === "won") {
+      // Wins pay into `earned` only — the unbanked side. Nothing here mints
+      // on-chain value or moves the universe bar: progress still requires a
+      // proven spend (CLAUDE.md §11), and this is the input to that loop.
+      const bonus = outcome.hpRemaining > 0 && outcome.turnsTaken <= 3 ? Math.round(spec.elixirReward * 0.2) : 0;
+      state.elixir.earned += spec.elixirReward + bonus;
+      return {
+        elixirEarned: spec.elixirReward + bonus,
+        elixirLost: 0,
+        message: bonus > 0
+          ? `${spec.name} falls. +${spec.elixirReward} elixir, +${bonus} for the clean kill.`
+          : `${spec.name} falls. +${spec.elixirReward} elixir.`,
+      };
+    }
+
+    if (outcome.result === "lost") {
+      // A loss costs unbanked elixir only. Anything already minted on Sepolia is
+      // real value the game has no business burning — bank it before you risk it.
+      const lost = Math.floor(state.elixir.earned * LOSS_RATE);
+      state.elixir.earned -= lost;
+      return {
+        elixirEarned: 0,
+        elixirLost: lost,
+        message: lost > 0
+          ? `${spec.name} takes ${lost} unbanked elixir off you. Your minted balance is untouched.`
+          : `${spec.name} finds nothing unbanked to take.`,
+      };
+    }
+
+    return { elixirEarned: 0, elixirLost: 0, message: "You break away down the road." };
   },
 
   async getInventory(): Promise<InventoryItem[]> {

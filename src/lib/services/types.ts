@@ -11,6 +11,13 @@
 export type Address = `0x${string}`;
 export type TxHash = `0x${string}`;
 
+/**
+ * Identifies one area of the world ("road-west", "town-main"). Kept as a plain
+ * string rather than importing the Phaser map union: this layer must not depend
+ * on the rendering engine, and a real backend will key areas the same way.
+ */
+export type MapAreaKey = string;
+
 // ---------------------------------------------------------------------------
 // Player & world
 // ---------------------------------------------------------------------------
@@ -60,29 +67,143 @@ export interface TokenBalance {
 }
 
 // ---------------------------------------------------------------------------
-// Identity — attack-loadout NFTs (source-chain owned)
+// Identity — weapon-loadout NFTs (source-chain owned)
 // ---------------------------------------------------------------------------
 
+/**
+ * Characters have no innate powers. Everything a player can do in a fight comes
+ * from a weapon they own, so the loadout IS the moveset: the four equipped
+ * weapons are the four options under FIGHT.
+ */
 export type Element = "fire" | "water" | "earth" | "air" | "void";
 export type Rarity = "common" | "rare" | "epic" | "legendary";
 
-export interface AttackNFT {
+/**
+ * Class decides a weapon's *role* — its stat curve and which ability archetypes
+ * it can carry. Element decides effectiveness (see `ELEMENT_BEATS`). Two axes,
+ * but only one of them is a multiplier, so damage stays readable.
+ */
+export type WeaponClass = "sword" | "axe" | "staff" | "trident" | "fan" | "slingshot";
+
+/** The extra thing an ability does beyond raw damage — the "unique" in unique ability. */
+export type AbilityEffect =
+  /** Heal the attacker for `ratio` of the damage dealt. */
+  | { kind: "drain"; ratio: number }
+  /** Damage over time on the defender. */
+  | { kind: "bleed"; damage: number; turns: number }
+  /** Cut damage the attacker takes on the opponent's next turn by `amount` (0..1). */
+  | { kind: "guard"; amount: number }
+  /** Scale the defender's attack by `factor` (<1) for `turns`. */
+  | { kind: "weaken"; factor: number; turns: number }
+  /** Split the hit into `hits` smaller ones, each rolled separately. */
+  | { kind: "multi"; hits: number }
+  /** Ignore elemental resistance (never resolves below x1). */
+  | { kind: "pierce" };
+
+export interface WeaponAbility {
   id: string;
   name: string;
+  /** One line, shown in the loadout screen and when the ability fires. */
+  description: string;
+  /** Base power feeding the damage formula. */
+  power: number;
+  /** 0..100. Rolled before damage; a miss still costs the turn. */
+  accuracy: number;
+  /** Times it can be used per battle (PP). Refreshed each encounter. */
+  uses: number;
+  effect?: AbilityEffect;
+}
+
+export interface WeaponNFT {
+  id: string;
+  name: string;
+  weaponClass: WeaponClass;
   element: Element;
   rarity: Rarity;
-  /** Contribution to the player's power when equipped. */
-  power: number;
-  /** Sprite/art key resolved by the frontend asset pipeline. */
-  spriteKey: string;
+  /** Static contribution to the wielder's attack stat while equipped. */
+  attack: number;
+  /** The one ability this weapon grants. Equipping it is what adds the move. */
+  ability: WeaponAbility;
+  /** Sprite key resolved by the frontend asset pipeline (public/assets/weapons). */
+  iconKey: string;
 }
 
 export interface Loadout {
   maxSlots: number;
-  /** Equipped attacks by slot; `null` is an empty slot. */
-  slots: (AttackNFT | null)[];
-  /** Owned-but-unequipped attacks. */
-  bench: AttackNFT[];
+  /** Equipped weapons by slot; `null` is an empty slot. Also the battle moveset. */
+  slots: (WeaponNFT | null)[];
+  /** Owned-but-unequipped weapons. */
+  bench: WeaponNFT[];
+}
+
+// ---------------------------------------------------------------------------
+// Combat — enemies, encounters, and battle outcomes
+// ---------------------------------------------------------------------------
+
+/**
+ * Which side of the world an enemy belongs to. Both fight the same way; the
+ * split is lore and presentation (see `EnemySpec.title`).
+ * - `rescinded`: the evil order — humanoid, armed, one livery.
+ * - `blightspawn`: elixir-corrupted fauna the Rescinded herd onto the roads.
+ */
+export type EnemyFaction = "rescinded" | "blightspawn";
+
+/**
+ * One enemy the player can meet. Stats and identity come through the service so
+ * a real backend can own them later; only where it stands on the map is client
+ * geometry.
+ */
+export interface EnemySpec {
+  id: string;
+  name: string;
+  /** Rank or epithet shown under the name in battle ("Rescinded Marshal"). */
+  title: string;
+  faction: EnemyFaction;
+  /** Texture key under public/assets/battlers. */
+  spriteKey: string;
+  element: Element;
+  level: number;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  /** What it attacks with. Rescinded carry real weapons; blightspawn have innate ones. */
+  abilities: WeaponAbility[];
+  /** Elixir awarded on a win. */
+  elixirReward: number;
+  /**
+   * Relative likelihood of this enemy being rolled. Any enemy can appear on any
+   * highway — the sprite is your only warning — but a warlord turning up as
+   * often as a chick would make the roads a lottery, so the heavies are rare.
+   */
+  spawnWeight: number;
+  /** One line spoken when the encounter opens. */
+  taunt: string;
+}
+
+/** How a battle ended, as reported by the battle scene. */
+export type BattleResultKind = "won" | "lost" | "fled";
+
+export interface BattleOutcome {
+  enemyId: string;
+  result: BattleResultKind;
+  /** Player HP remaining, for flavour and future scoring. */
+  hpRemaining: number;
+  turnsTaken: number;
+}
+
+/**
+ * What the battle actually cost or paid. The client reports the outcome; the
+ * service decides the numbers — it never accepts a reward the client computed
+ * (CLAUDE.md §12: the client is never trusted).
+ */
+export interface BattleReward {
+  /** Added to `elixir.earned` — the unbanked side. Never mints on-chain value. */
+  elixirEarned: number;
+  /** Deducted from `elixir.earned` on a loss. Never touches `onChain`. */
+  elixirLost: number;
+  /** One line summarising the settlement, shown on the result screen. */
+  message: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +211,7 @@ export interface Loadout {
 // ---------------------------------------------------------------------------
 
 /**
- * Carried items. Unlike attack NFTs these are ordinary game state, not
+ * Carried items. Unlike weapon NFTs these are ordinary game state, not
  * source-chain identity — which is exactly why the split lives behind
  * GameService and not in the UI.
  */
@@ -101,6 +222,8 @@ export interface InventoryItem {
   description: string;
   count: number;
   spriteKey: string;
+  /** Set on items usable from BAG during a fight; absent means it is not usable there. */
+  battleUse?: { kind: "heal"; amount: number };
 }
 
 // ---------------------------------------------------------------------------
