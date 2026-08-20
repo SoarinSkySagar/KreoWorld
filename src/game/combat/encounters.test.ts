@@ -25,7 +25,7 @@ describe("ENCOUNTER_MAPS", () => {
     expect([...ENCOUNTER_MAPS].sort()).toEqual(["road-east", "road-north", "road-west"]);
   });
 
-  it("leaves the towns and the Pump island clean", () => {
+  it("leaves the towns and the Anchor island clean", () => {
     for (const key of ["town-main", "town-b", "town-c", "pump"] as MapKey[]) {
       expect(isEncounterMap(key)).toBe(false);
       expect(rollEncounters(key, ENEMIES, lcg(1))).toEqual([]);

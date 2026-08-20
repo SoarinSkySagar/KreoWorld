@@ -10,6 +10,7 @@ import { MAP_INTERACTIONS } from "../data/interactions";
 import { Enemy } from "../entities/Enemy";
 import { isEncounterMap, rollEncounters } from "../combat/encounters";
 import { gameService } from "@/lib/services";
+import { gameStore } from "@/lib/store/gameStore";
 import type { BattleResultKind } from "@/lib/services/types";
 
 interface EnterData {
@@ -123,7 +124,10 @@ export class OverworldScene extends Phaser.Scene {
   private openWorldMap(): void {
     if (this.transitioning || this.inBattle || this.interactions.busy) return;
     this.scene.pause();
-    this.scene.launch("WorldMapScene", { currentMapKey: this.mapKey });
+    this.scene.launch("WorldMapScene", {
+      currentMapKey: this.mapKey,
+      floor: gameStore.getState().currentFloor(),
+    });
   }
 
   update(): void {
@@ -140,7 +144,7 @@ export class OverworldScene extends Phaser.Scene {
 
   /**
    * Roll a fresh set of hostiles for this map. Only the highways spawn them —
-   * the towns and the Pump island are clean, which is what makes stepping onto a
+   * the towns and the Anchor island are clean, which is what makes stepping onto a
    * road feel like a choice. Rolled on every entry, so walking a road twice
    * gives you a different set.
    */
@@ -148,7 +152,8 @@ export class OverworldScene extends Phaser.Scene {
     this.enemies = [];
     if (!isEncounterMap(this.mapKey)) return;
 
-    const table = await gameService.getEncounterTable(this.mapKey);
+    const floor = gameStore.getState().currentFloor();
+    const table = await gameService.getEncounterTable(this.mapKey, floor);
     // The scene can be torn down while the table is in flight (the player walked
     // straight through); don't build sprites into a dead scene.
     if (!this.ready || !this.scene.isActive()) return;

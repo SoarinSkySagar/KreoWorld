@@ -19,17 +19,20 @@ import type {
   ClaimResult,
   ElixirBalance,
   EnemySpec,
+  ForgeOption,
   InventoryItem,
   LeaderboardEntry,
   Loadout,
   MapAreaKey,
   Player,
+  PresencePeer,
   ProofTicket,
   Season,
   Shop,
   TokenBalance,
-  TxHash,
-  WorldBar,
+  TowerState,
+  World,
+  WorldId,
 } from "./types";
 
 export interface GameService {
@@ -41,9 +44,34 @@ export interface GameService {
    */
   connectWallet(): Promise<Player>;
   disconnectWallet(): Promise<Player>;
-  getWorldBar(): Promise<WorldBar>;
-  /** Convenience read of the stored-progress bar alone. */
-  getStoredProgress(): Promise<number>;
+
+  // --- Worlds & towers ---
+  /**
+   * Every world the deployment knows about, open or locked. A world is backed
+   * by an AttestCoin-supported source chain, so in a real implementation this
+   * derives from `getSupportedChains()` rather than a content list.
+   */
+  listWorlds(): Promise<World[]>;
+  getCurrentWorld(): Promise<World>;
+  /**
+   * Move the character to another world. Level and armoury come along (they
+   * live on Creditcoin); currency and tower progress do not — each world keeps
+   * its own. Rejects worlds that are not `open`.
+   */
+  travelTo(worldId: WorldId): Promise<Player>;
+  /** Tower progress for one world. Floors open by killing the floor boss. */
+  getTower(worldId: WorldId): Promise<TowerState>;
+  /**
+   * Take the stair, up or down, in the current world.
+   *
+   * Down is always allowed to a floor already reached; up only as far as one
+   * past the highest clear, because a floor opens by defeating its boss. Throws
+   * rather than clamping — a stair that silently puts you somewhere else is
+   * worse than one that says no.
+   */
+  moveToFloor(floor: number): Promise<TowerState>;
+  /** Presence of other players in the caller's current world and floor. */
+  getNearbyPlayers(): Promise<PresencePeer[]>;
 
   // --- Economy ---
   getElixirBalance(): Promise<ElixirBalance>;
@@ -54,14 +82,29 @@ export interface GameService {
    * `earned` → `onChain`.
    */
   claimElixirToChain(amount: number): Promise<ClaimResult>;
+
+  // --- The three provable loops ---
+  /** What the current world's forge can make, and what each costs. */
+  listForgeOptions(): Promise<ForgeOption[]>;
   /**
-   * Submit a source-chain spend tx hash to be proven. Returns a ticket whose
-   * status starts at `pending`; poll `getProofStatus` to watch it advance
-   * through the attestation → proof → verify → reward lifecycle.
+   * Forge a weapon in the current world: one player-signed source-chain tx that
+   * burns the elixir and mints the NFT, then gets proven to Creditcoin. Returns
+   * a ticket starting at `pending` — the weapon only enters the armoury when
+   * the proof reaches `rewarded`. You do not get the weapon because the game
+   * says so; you get it because a burn provably happened.
    */
-  submitSpendProof(txHash: TxHash): Promise<ProofTicket>;
+  forgeWeapon(weaponType: string): Promise<ProofTicket>;
+  /** Deposit real source-chain value, proven, credited as project token. */
+  depositValue(amount: number): Promise<ProofTicket>;
+  /**
+   * Re-prove ownership of a weapon whose attestation has lapsed or is close to
+   * lapsing. Until it resolves the weapon stays unusable.
+   */
+  reattestWeapon(weaponId: string): Promise<ProofTicket>;
   /** Poll the current state of a proof ticket. */
   getProofStatus(ticketId: string): Promise<ProofTicket>;
+  /** Every ticket this session, newest first — drives the proof trail. */
+  listProofTickets(): Promise<ProofTicket[]>;
 
   // --- Identity ---
   getLoadout(): Promise<Loadout>;
@@ -77,11 +120,11 @@ export interface GameService {
 
   // --- Combat ---
   /**
-   * Which enemies may appear in `area`. Identity, stats and levels live behind
+   * Which enemies may appear in `area` on `floor`. Identity, stats and levels live behind
    * the seam so a real backend can own them; only the tiles they stand on are
    * client geometry.
    */
-  getEncounterTable(area: MapAreaKey): Promise<EnemySpec[]>;
+  getEncounterTable(area: MapAreaKey, floor: number): Promise<EnemySpec[]>;
   /**
    * Settle a finished battle. The client reports *what happened*; the service
    * decides what it paid or cost. A client-computed reward is never accepted

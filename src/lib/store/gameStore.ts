@@ -18,19 +18,23 @@ import type {
   Player,
   ProofTicket,
   TokenBalance,
-  TxHash,
-  WorldBar,
+  TowerState,
+  World,
+  WorldId,
 } from "@/lib/services/types";
 
 /** Full-screen DOM panels layered over the canvas. Only one is open at a time. */
-export type OverlayKey = "loadout" | "inventory" | "pump";
+export type OverlayKey = "loadout" | "inventory" | "forge" | "deposit" | "worlds" | "ascent";
 
 /** A proof that has finished moving — nothing left to poll for. */
 const isSettled = (t: ProofTicket) => t.status === "rewarded" || t.status === "failed";
 
 interface GameState {
   player: Player | null;
-  worldBar: WorldBar | null;
+  /** The world the player currently occupies — a chain, not a content region. */
+  world: World | null;
+  /** Tower progress in that world. Floors do not follow the player across worlds. */
+  tower: TowerState | null;
   elixir: ElixirBalance | null;
   token: TokenBalance | null;
   loading: boolean;
@@ -45,15 +49,15 @@ interface GameState {
   inBattle: boolean;
   /**
    * Proofs submitted this session, newest first. Tracked here rather than in the
-   * Pump panel because attestation takes minutes: the player is expected to
+   * forge panel because attestation takes minutes: the player is expected to
    * close the panel and keep playing while it runs.
    */
   proofs: ProofTicket[];
 
   /** Pull the core HUD snapshot from the service. Safe to call repeatedly. */
   hydrate: () => Promise<void>;
-  /** Local optimistic bar update (e.g. drain tick); real values come from hydrate. */
-  setWorldBar: (bar: WorldBar) => void;
+  /** Floor the player is on, for scenes that need it outside React. */
+  currentFloor: () => number;
   /** Open a panel, or close the open one by passing the key it is already showing. */
   toggleOverlay: (key: OverlayKey) => void;
   closeOverlay: () => void;
@@ -62,10 +66,18 @@ interface GameState {
 
   connectWallet: () => Promise<void>;
   disconnectWallet: () => Promise<void>;
-  /** Mint earned elixir on the source chain so it becomes spendable. */
+  /** Move to another world. Level and armoury travel; currency and floors do not. */
+  travelTo: (worldId: WorldId) => Promise<void>;
+  /** Take the stair, up or down, in the current world. */
+  moveToFloor: (floor: number) => Promise<void>;
+  /** Mint earned elixir on this world's chain so it becomes spendable. */
   claimToChain: (amount: number) => Promise<ClaimResult>;
-  /** Hand a source-chain spend to the prover and start tracking it. */
-  submitProof: (txHash: TxHash) => Promise<void>;
+  /** Burn elixir to forge a weapon, and start tracking the proof of that burn. */
+  forgeWeapon: (weaponType: string) => Promise<void>;
+  /** Deposit source-chain value to be proven and credited as project token. */
+  depositValue: (amount: number) => Promise<void>;
+  /** Re-prove ownership of a weapon whose attestation has lapsed. */
+  reattestWeapon: (weaponId: string) => Promise<void>;
   /** Advance every unsettled proof. Called on a timer by the HUD. */
   pollProofs: () => Promise<void>;
   hasPendingProofs: () => boolean;
@@ -73,7 +85,8 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set, get) => ({
   player: null,
-  worldBar: null,
+  world: null,
+  tower: null,
   elixir: null,
   token: null,
   loading: false,
@@ -85,19 +98,20 @@ export const useGameStore = create<GameState>((set, get) => ({
   hydrate: async () => {
     set({ loading: true, error: null });
     try {
-      const [player, worldBar, elixir, token] = await Promise.all([
+      const [player, world, elixir, token] = await Promise.all([
         gameService.getPlayer(),
-        gameService.getWorldBar(),
+        gameService.getCurrentWorld(),
         gameService.getElixirBalance(),
         gameService.getTokenBalance(),
       ]);
-      set({ player, worldBar, elixir, token, loading: false });
+      const tower = await gameService.getTower(world.id);
+      set({ player, world, tower, elixir, token, loading: false });
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : "Failed to load game state." });
     }
   },
 
-  setWorldBar: (worldBar) => set({ worldBar }),
+  currentFloor: () => get().tower?.currentFloor ?? 1,
 
   toggleOverlay: (key) => set((s) => ({ overlay: s.overlay === key ? null : key })),
   closeOverlay: () => set({ overlay: null }),
@@ -113,6 +127,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ player: await gameService.disconnectWallet() });
   },
 
+  travelTo: async (worldId) => {
+    set({ loading: true, error: null });
+    try {
+      await gameService.travelTo(worldId);
+      // Currency and tower progress are per-world, so a full re-read is the only
+      // correct move here — patching locally would carry the old world's numbers.
+      await get().hydrate();
+      set({ overlay: null });
+    } catch (e) {
+      set({ loading: false, error: e instanceof Error ? e.message : "Could not travel." });
+    }
+  },
+
+  moveToFloor: async (floor) => {
+    const tower = await gameService.moveToFloor(floor);
+    set({ tower, overlay: null });
+  },
+
   claimToChain: async (amount) => {
     const result = await gameService.claimElixirToChain(amount);
     // The mint moved value between the two elixir balances; re-read rather than
@@ -121,8 +153,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     return result;
   },
 
-  submitProof: async (txHash) => {
-    const ticket = await gameService.submitSpendProof(txHash);
+  forgeWeapon: async (weaponType) => {
+    const ticket = await gameService.forgeWeapon(weaponType);
+    set((s) => ({ proofs: [ticket, ...s.proofs] }));
+    // The burn already left the on-chain balance; the weapon arrives later.
+    await get().hydrate();
+  },
+
+  depositValue: async (amount) => {
+    const ticket = await gameService.depositValue(amount);
+    set((s) => ({ proofs: [ticket, ...s.proofs] }));
+  },
+
+  reattestWeapon: async (weaponId) => {
+    const ticket = await gameService.reattestWeapon(weaponId);
     set((s) => ({ proofs: [ticket, ...s.proofs] }));
   },
 
@@ -136,8 +180,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const byId = new Map(updated.map((t) => [t.id, t]));
     set((s) => ({ proofs: s.proofs.map((t) => byId.get(t.id) ?? t) }));
 
-    // A reward credits token and moves the universe bar — refresh so the HUD
-    // shows it happening, which is the whole payoff of the loop.
+    // Reaching `rewarded` is when the weapon actually lands in the armoury or the
+    // token is credited — refresh so the HUD shows it, which is the payoff of
+    // the whole loop.
     const justRewarded = updated.some(
       (t) => t.status === "rewarded" && unsettled.find((u) => u.id === t.id)?.status !== "rewarded",
     );

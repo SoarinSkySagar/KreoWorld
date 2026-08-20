@@ -1,9 +1,12 @@
 import * as Phaser from "phaser";
 import type { MapKey } from "../maps";
-import { WORLD_MAP_NODES, computeWorldMapEdges, type WorldMapNodeKind } from "../worldMap";
+import { worldMapNodes, computeWorldMapEdges, type WorldMapNode, type WorldMapNodeKind } from "../worldMap";
+import { getFloor } from "../floors";
 
 interface WorldMapData {
   currentMapKey: MapKey;
+  /** Which floor's schematic to draw. Floors share map files but not layout. */
+  floor: number;
 }
 
 const NODE_RADIUS: Record<WorldMapNodeKind, number> = {
@@ -27,6 +30,7 @@ const NODE_COLOR: Record<WorldMapNodeKind, number> = {
  */
 export class WorldMapScene extends Phaser.Scene {
   private currentMapKey!: MapKey;
+  private floor!: number;
 
   constructor() {
     super("WorldMapScene");
@@ -34,6 +38,7 @@ export class WorldMapScene extends Phaser.Scene {
 
   init(data: WorldMapData): void {
     this.currentMapKey = data.currentMapKey;
+    this.floor = data.floor ?? 1;
   }
 
   create(): void {
@@ -48,7 +53,7 @@ export class WorldMapScene extends Phaser.Scene {
     this.add.rectangle(0, 0, W, H, 0x000000, 0.72).setOrigin(0, 0).setScrollFactor(0).setDepth(0);
 
     this.add
-      .text(W / 2, originY - 28, "World Map", {
+      .text(W / 2, originY - 28, `Floor ${this.floor} — ${getFloor(this.floor).name}`, {
         fontFamily: "monospace",
         fontSize: "22px",
         color: "#6ee7ff",
@@ -57,15 +62,17 @@ export class WorldMapScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1);
 
+    const nodes = worldMapNodes(this.floor);
+
     const graphics = this.add.graphics().setScrollFactor(0).setDepth(1);
     graphics.lineStyle(2, 0x4a5568, 0.9);
     for (const edge of computeWorldMapEdges()) {
-      const a = toScreen(WORLD_MAP_NODES[edge.a].x, WORLD_MAP_NODES[edge.a].y);
-      const b = toScreen(WORLD_MAP_NODES[edge.b].x, WORLD_MAP_NODES[edge.b].y);
+      const a = toScreen(nodes[edge.a].x, nodes[edge.a].y);
+      const b = toScreen(nodes[edge.b].x, nodes[edge.b].y);
       graphics.lineBetween(a.x, a.y, b.x, b.y);
     }
 
-    for (const [key, node] of Object.entries(WORLD_MAP_NODES) as [MapKey, (typeof WORLD_MAP_NODES)[MapKey]][]) {
+    for (const [key, node] of Object.entries(nodes) as [MapKey, WorldMapNode][]) {
       const { x, y } = toScreen(node.x, node.y);
       const isCurrent = key === this.currentMapKey;
 

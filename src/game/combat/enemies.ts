@@ -9,7 +9,7 @@
  * **Blightspawn** are elixir-corrupted fauna the Rescinded herd onto the roads
  * to bleed passing universes. No organisation, no weapons — innate abilities.
  *
- * Both only ever appear on the highways. Towns and the Pump island are clean.
+ * Both only ever appear on the highways. Towns and the Anchor island are clean.
  */
 
 import type { EnemySpec, WeaponAbility } from "@/lib/services/types";

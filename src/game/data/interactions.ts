@@ -12,7 +12,7 @@ export interface ObjectSpec {
   lines: string[];
   /**
    * Panel this prop opens once its lines are read. Machines the player operates
-   * (the Pump terminal, later the shop builder) are real screens, not dialogue —
+   * (the forge, later the shop builder) are real screens, not dialogue —
    * the lines introduce them, the panel does the work.
    */
   opens?: OverlayKey;
@@ -52,7 +52,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         lines: [
           "You're the one from Aleph-Null, aren't you.",
           "Your elixir went cloudy the same night ours did. Nobody here thinks that's a coincidence.",
-          "The Pump is north-east, past the bridges. That's where progress actually gets recorded.",
+          "The Anchor is north-east, past the bridges. Every weapon on this floor came out of it.",
         ],
       },
       {
@@ -62,7 +62,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         row: 20,
         facing: "down",
         lines: [
-          "Careful how you spend the day. The bar drains whether you're working or not.",
+          "Careful how you spend the day. The roads don't care that you're tired.",
           "Grinding here doesn't move it. Only a proven spend does.",
         ],
       },
@@ -73,7 +73,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         row: 32,
         facing: "left",
         lines: [
-          "People keep asking me how to fool the bar.",
+          "People keep asking me how to fool the forge.",
           "You can. Go ahead. Edit whatever you like — the world just won't move.",
           "It only moves on something that really happened. That's the whole trick.",
         ],
@@ -89,7 +89,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         row: 19,
         facing: "down",
         lines: [
-          "Second universe, same rot. We're further along the drain than you are.",
+          "Second floor, same rot. We're further up the tower than you are.",
           "Don't hoard what you earn. Unspent elixir does nothing for anybody.",
         ],
       },
@@ -122,7 +122,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         col: 36,
         row: 46,
         facing: "up",
-        lines: ["Three universes, three bars, one Pump.", "Make of that what you like."],
+        lines: ["Three holds, two floors, one Anchor.", "Make of that what you like."],
       },
     ],
   },
@@ -135,8 +135,8 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         row: 15,
         facing: "right",
         lines: [
-          "Welcome to the island. The Pump doesn't take promises — it takes proof.",
-          "Spend your elixir for real, bring back the receipt, and your universe moves.",
+          "Welcome to the island. The Anchor doesn't take promises — it takes proof.",
+          "Burn your elixir for real, and what the proof returns is a weapon nobody can argue with.",
           "It takes a few minutes to come through. That wait is the honest part.",
         ],
       },
@@ -149,7 +149,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
         h: 2,
         once: true,
         lines: [
-          "The air over the island hums — every universe's progress passes through this one building.",
+          "The air over the island hums — everything anyone carries came through this one building.",
         ],
       },
     ],
@@ -163,7 +163,7 @@ export const MAP_INTERACTIONS: Partial<Record<MapKey, AreaInteractions>> = {
 export const ROOM_INTERACTIONS: Partial<Record<RoomKey, AreaInteractions>> = {
   home: {
     objects: [
-      { label: "Bed", col: 1, row: 2, lines: ["Your bed. Rest doesn't refill the bar — nothing here does."] },
+      { label: "Bed", col: 1, row: 2, lines: ["Your bed. Sleep costs you nothing and proves nothing."] },
       {
         label: "Screen",
         col: 6,
@@ -180,7 +180,7 @@ export const ROOM_INTERACTIONS: Partial<Record<RoomKey, AreaInteractions>> = {
         col: 6,
         row: 3,
         facing: "down",
-        lines: ["Stock's thin.", "Bring me tokens that cleared the Pump and we'll talk properly."],
+        lines: ["Stock's thin.", "Bring me tokens that cleared the Anchor and we'll talk properly."],
       },
     ],
     objects: [{ label: "Counter", col: 3, row: 5, lines: ["A ledger, open, mostly blank."] }],
@@ -207,7 +207,7 @@ export const ROOM_INTERACTIONS: Partial<Record<RoomKey, AreaInteractions>> = {
         row: 2,
         facing: "down",
         lines: [
-          "Records office. We log what the Pump confirms, nothing else.",
+          "Records office. We log what the Anchor confirms, nothing else.",
           "If it isn't proven, as far as this hall is concerned it didn't happen.",
         ],
       },
@@ -230,11 +230,24 @@ export const ROOM_INTERACTIONS: Partial<Record<RoomKey, AreaInteractions>> = {
     ],
     objects: [
       {
-        label: "Pump terminal",
+        label: "The forge",
         col: 5,
         row: 6,
-        opens: "pump",
-        lines: ["THE ELIXIR PUMP — mint what you earned, then prove what you spend."],
+        opens: "forge",
+        lines: ["THE FORGE — burn what you earned. What the proof returns is yours."],
+      },
+      {
+        // The stair is the gate between floors. It is deliberately a real object
+        // on a real island rather than an invisible wall: the way up exists, it
+        // simply has not been built any higher yet.
+        label: "The stair",
+        col: 2,
+        row: 6,
+        opens: "ascent",
+        lines: [
+          "A spiral stair cut clean through the rock, running both ways off the Anchor.",
+          "Up toward whatever the clearing parties have reached. Down toward everything behind you.",
+        ],
       },
     ],
   },

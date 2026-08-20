@@ -15,7 +15,7 @@ import {
   resolveRound,
   type Rng,
 } from "./engine";
-import { WEAPONS, WEAPONS_BY_ID } from "./weapons";
+import { WEAPONS, WEAPONS_BY_ID, mintWeapon } from "./weapons";
 import { ENEMIES } from "./enemies";
 
 /** A deterministic rng that walks a fixed sequence, repeating the last value. */
@@ -27,10 +27,14 @@ function seq(values: number[]): Rng {
 /** Always rolls the same value — handy for "never miss" / "always miss". */
 const fixed = (v: number): Rng => () => v;
 
+/**
+ * An owned instance of a catalogue weapon. Tests use the home world, whose
+ * origin variant is the identity multiplier, so the numbers below stay the
+ * catalogue's rather than silently picking up a world's modifiers.
+ */
 function weapon(id: string): WeaponNFT {
-  const w = WEAPONS_BY_ID.get(id);
-  if (!w) throw new Error(`test fixture missing weapon ${id}`);
-  return w;
+  if (!WEAPONS_BY_ID.has(id)) throw new Error(`test fixture missing weapon ${id}`);
+  return mintWeapon(id, "world-aleph", `test-${id}`, "1");
 }
 
 function enemy(overrides: Partial<EnemySpec> = {}): EnemySpec {
@@ -370,7 +374,8 @@ describe("content integrity", () => {
   it("resolves every enemy against every weapon without throwing", () => {
     for (const spec of ENEMIES) {
       for (const w of WEAPONS) {
-        const state = createBattleState(makePlayerCombatant("W", 12, [w, null, null, null]), spec);
+        const owned = weapon(w.id);
+        const state = createBattleState(makePlayerCombatant("W", 12, [owned, null, null, null]), spec);
         expect(() => resolveRound(state, { kind: "move", index: 0 }, fixed(0.4))).not.toThrow();
       }
     }

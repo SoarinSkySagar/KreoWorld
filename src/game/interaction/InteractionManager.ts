@@ -34,7 +34,7 @@ const FACING_VECTOR: Record<Facing, { x: number; y: number }> = {
 
 /**
  * One generic system behind every "press E on the thing" in the game — NPCs,
- * signs, the Elixir Pump, gym doors, shop counters. Scenes register targets and
+ * signs, the forge, gym doors, shop counters. Scenes register targets and
  * trigger zones; this owns the dialogue box, the hint bubble, and the rule that
  * the player must be close AND facing the target. Building this once means new
  * interactables are data, not new scene code.

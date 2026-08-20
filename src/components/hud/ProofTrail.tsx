@@ -1,12 +1,24 @@
 "use client";
 
-import type { ProofTicket } from "@/lib/services/types";
+import type { ProofCredit, ProofTicket } from "@/lib/services/types";
 import { PROOF_STEPS, stepIndex } from "./proofSteps";
 
 const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
+/** What a finished proof handed back, in the terms the player cares about. */
+function creditLabel(credit: ProofCredit): string {
+  switch (credit.kind) {
+    case "weapon":
+      return `${credit.weaponName} forged`;
+    case "token":
+      return `+${credit.amount} token`;
+    case "attestation":
+      return `${credit.weaponName} re-attested`;
+  }
+}
+
 /**
- * One submitted spend, shown as the ladder it actually climbs. Every stage stays
+ * One submitted transaction, shown as the ladder it actually climbs. Every stage stays
  * on screen with its own explanation, so a player looking at a stalled-seeming
  * screen can see which real step is taking the time rather than assuming the
  * game hung.
@@ -23,16 +35,16 @@ export function ProofTrail({ ticket }: { ticket: ProofTicket }) {
         <span className="truncate font-mono text-xs text-hud-mute" title={ticket.txHash}>
           {shortHash(ticket.txHash)}
         </span>
-        {ticket.status === "rewarded" && (
+        {ticket.credited && (
           <span className="shrink-0 font-mono text-xs uppercase tracking-[0.14em] text-hud-proven">
-            +{ticket.reward} token · +{ticket.barDelta} universe
+            {creditLabel(ticket.credited)}
           </span>
         )}
       </div>
 
       {failed ? (
         <p className="font-mono text-sm text-hud-corrupt">
-          {ticket.error ?? "This spend could not be proven. Check the transaction and try again."}
+          {ticket.error ?? "This transaction could not be proven. Check it and try again."}
         </p>
       ) : (
         <ol className="flex flex-col gap-2.5">
