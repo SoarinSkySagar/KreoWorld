@@ -5,7 +5,9 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { Balances } from "./Balances";
 import { InventoryPanel } from "./InventoryPanel";
 import { LoadoutPanel } from "./LoadoutPanel";
-import { PumpPanel } from "./PumpPanel";
+import { AscentPanel } from "./AscentPanel";
+import { ForgePanel } from "./ForgePanel";
+import { WorldsPanel } from "./WorldsPanel";
 import { StatusBars } from "./StatusBars";
 import { PROOF_STEPS, stepIndex } from "./proofSteps";
 
@@ -23,10 +25,10 @@ const POLL_MS = 1500;
  * here reaches a data source directly (BUILD_PLAN.md §"The one rule").
  */
 export function Hud() {
-  const { player, worldBar, elixir, token, error, overlay, inBattle, proofs, hydrate, toggleOverlay, pollProofs } =
+  const { player, world, tower, elixir, token, error, overlay, inBattle, proofs, hydrate, toggleOverlay, pollProofs } =
     useGameStore();
 
-  // Proofs are tracked here rather than in the Pump panel: attestation takes
+  // Proofs are tracked here rather than in the forge panel: attestation takes
   // minutes, and the player is meant to close the terminal and keep playing
   // while it runs.
   const inFlight = proofs.find((t) => t.status !== "rewarded" && t.status !== "failed");
@@ -47,8 +49,11 @@ export function Hud() {
       const key = e.key.toLowerCase();
       if (key === "l") toggleOverlay("loadout");
       else if (key === "i") toggleOverlay("inventory");
-      // The Pump has no hotkey on purpose: it is a place you walk to, opened by
-      // its terminal (or by the in-flight proof indicator).
+      // Worlds has no hotkey and no button: crossing is done with the Riftstone,
+      // from the bag. Making it a menu command would turn a carried thing back
+      // into a UI affordance.
+      // The forge has no hotkey on purpose: it is a place you walk to, opened by
+      // the forge itself (or by the in-flight proof indicator).
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -67,19 +72,26 @@ export function Hud() {
         <div className="flex flex-col gap-3 rounded-2xl border border-hud-edge bg-hud-ink/85 px-5 py-4 backdrop-blur-[2px]">
           <div className="flex items-baseline gap-2.5">
             <h1 className="text-xl tracking-[0.08em] text-hud-bone">
-              {player?.universeName ?? "…"}
+              {world?.name ?? "…"}
             </h1>
             <span className="text-xs uppercase tracking-[0.18em] text-hud-mute">
               lv {player?.level ?? "—"}
             </span>
+            {/* The chain is the world. Naming it here keeps that honest rather
+                than letting the world read as ordinary game content. */}
+            {world && (
+              <span className="text-xs uppercase tracking-[0.18em] text-hud-mute/70">
+                {world.chainName}
+              </span>
+            )}
           </div>
 
-          <StatusBars bar={worldBar} />
+          <StatusBars elixir={elixir} tower={tower} world={world} />
 
           {inFlight && (
             <button
               type="button"
-              onClick={() => toggleOverlay("pump")}
+              onClick={() => toggleOverlay("forge")}
               className="pointer-events-auto flex items-center gap-2.5 self-start rounded-lg text-xs text-hud-mute transition-colors hover:text-hud-bone focus-visible:outline-1 focus-visible:outline-hud-proven"
             >
               <span aria-hidden className="size-2 animate-pulse rounded-full bg-hud-unproven" />
@@ -114,7 +126,9 @@ export function Hud() {
 
       {overlay === "loadout" && <LoadoutPanel />}
       {overlay === "inventory" && <InventoryPanel />}
-      {overlay === "pump" && <PumpPanel />}
+      {overlay === "forge" && <ForgePanel />}
+      {overlay === "worlds" && <WorldsPanel />}
+      {overlay === "ascent" && <AscentPanel />}
     </div>
   );
 }

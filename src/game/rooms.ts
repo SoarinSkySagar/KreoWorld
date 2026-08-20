@@ -82,7 +82,7 @@ export const ROOMS: Record<RoomKey, RoomSpec> = {
     ],
   },
   pump: {
-    title: "The Elixir Pump",
+    title: "The Anchor",
     cols: 13,
     rows: 9,
     floor: "floor_gray",

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { gameService } from "@/lib/services";
 import type { Element, Loadout, WeaponClass, WeaponNFT } from "@/lib/services/types";
+import { isAttestationLapsed, originVariant } from "@/game/combat/weapons";
+import { useGameStore } from "@/lib/store/gameStore";
 import { OverlayPanel } from "./OverlayPanel";
 
 /** Muted element tints — enough to tell weapons apart, not enough to shout. */
@@ -236,7 +238,59 @@ function WeaponLabel({ weapon }: { weapon: WeaponNFT }) {
           pow {weapon.ability.power} · acc {weapon.ability.accuracy}% · {weapon.ability.uses} uses ·
           strong vs {BEATS[weapon.element]}
         </span>
+        <Provenance weapon={weapon} />
       </span>
+    </span>
+  );
+}
+
+/**
+ * Where this weapon came from, and whether the armoury's claim on it still
+ * holds.
+ *
+ * Origin is not a label someone typed — it is the chain the crediting proof came
+ * from, which is why it can be trusted and why the same weapon forged elsewhere
+ * is a different weapon. A lapsed claim is shown as a problem because it is one:
+ * an unproven holding has no provenance, and the weapon cannot be used until it
+ * is re-attested.
+ */
+function Provenance({ weapon }: { weapon: WeaponNFT }) {
+  const reattestWeapon = useGameStore((s) => s.reattestWeapon);
+  const [busy, setBusy] = useState(false);
+  const lapsed = isAttestationLapsed(weapon);
+  const { epithet } = originVariant(weapon.originWorldId);
+
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-2">
+      <span className="font-mono text-xs uppercase tracking-[0.14em] text-hud-mute">
+        {epithet} · #{weapon.tokenId}
+      </span>
+      {lapsed ? (
+        <>
+          <span className="font-mono text-xs uppercase tracking-[0.14em] text-hud-corrupt">
+            claim lapsed
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await reattestWeapon(weapon.id);
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="rounded-lg border border-hud-proven px-2 py-0.5 font-mono text-xs uppercase tracking-[0.14em] text-hud-proven transition-colors hover:bg-hud-proven/10 disabled:opacity-40 focus-visible:outline-1 focus-visible:outline-hud-proven"
+          >
+            {busy ? "Proving…" : "Re-attest"}
+          </button>
+        </>
+      ) : (
+        <span className="font-mono text-xs uppercase tracking-[0.14em] text-hud-proven">
+          attested
+        </span>
+      )}
     </span>
   );
 }

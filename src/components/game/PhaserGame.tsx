@@ -58,6 +58,34 @@ export function PhaserGame({ className, mapKey = DEFAULT_MAP }: { className?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mapKey is a boot-time choice, not reactive
   }, [hydrate]);
 
+  // Changing world OR floor has to land you somewhere.
+  //
+  // Worlds share every map file, and so do floors, so changing either on its own
+  // moves nothing on screen — you would still be standing on the tile you left,
+  // with only the HUD numbers quietly different. Reset to the entry point so
+  // arriving is something you can see happen.
+  useEffect(() => {
+    return useGameStore.subscribe((s, prev) => {
+      const world = s.world?.id;
+      const floor = s.tower?.currentFloor;
+      // Ignore the first load (null → a value): that is booting, not moving.
+      if (!world || !prev.world || floor === undefined || !prev.tower) return;
+      const moved = world !== prev.world.id || floor !== prev.tower.currentFloor;
+      if (!moved) return;
+
+      const game = gameRef.current;
+      if (!game) return;
+
+      for (const active of game.scene.getScenes(true)) {
+        game.scene.stop(active.scene.key);
+      }
+      // A battle cannot survive the crossing either, and the HUD hides itself
+      // while `inBattle` is set — leaving it set would hide the new world.
+      useGameStore.getState().setInBattle(false);
+      game.scene.start("OverworldScene", { mapKey: DEFAULT_MAP });
+    });
+  }, []);
+
   return (
     <div
       ref={containerRef}

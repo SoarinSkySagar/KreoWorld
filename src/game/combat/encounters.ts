@@ -4,7 +4,7 @@
  * (`getEncounterTable`), but the tiles they occupy are derived from the map
  * layout the client already has.
  *
- * Enemies only ever appear on the highways. Towns and the Pump island are safe,
+ * Enemies only ever appear on the highways. Towns and the Anchor island are safe,
  * which is what makes stepping onto a road feel like a decision.
  */
 

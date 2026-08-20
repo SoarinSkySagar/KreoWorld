@@ -7,7 +7,7 @@
  * `scripts/extract-assets.py`; the two must be edited together.
  */
 
-import type { WeaponClass, WeaponNFT } from "@/lib/services/types";
+import type { WeaponClass, WeaponNFT, WeaponType, WorldId } from "@/lib/services/types";
 
 /**
  * What a class *is*, as opposed to what an element does. Element is the
@@ -27,7 +27,7 @@ export const CLASS_PROFILE: Record<
   slingshot: { attack: 0.7, speed: 1.2, accuracy: 1.0, role: "unerring" },
 };
 
-export const WEAPONS: WeaponNFT[] = [
+export const WEAPONS: WeaponType[] = [
   // --- swords: balanced, bleed ------------------------------------------------
   {
     id: "wpn-emberfang",
@@ -385,3 +385,87 @@ export const WEAPONS_BY_ID = new Map(WEAPONS.map((w) => [w.id, w]));
 
 /** Every icon key the game must preload. */
 export const WEAPON_ICON_KEYS = Array.from(new Set(WEAPONS.map((w) => w.iconKey)));
+
+// ---------------------------------------------------------------------------
+// Origin — the same weapon forged in a different world is a different weapon
+// ---------------------------------------------------------------------------
+
+/**
+ * How a world's forge shapes what comes out of it.
+ *
+ * This is the reason to travel: a world can only issue weapons of its own
+ * origin, so an ability variant that exists in one world can be obtained
+ * nowhere else. Bring it home and it keeps working — the armoury lives on
+ * Creditcoin, so origin travels with the weapon rather than trapping it.
+ *
+ * Kept as a multiplier table rather than bespoke abilities so the catalogue
+ * stays the single move list. Adding a world does not fork 19 abilities.
+ */
+export interface OriginVariant {
+  /** Suffix shown after the weapon name, e.g. "Emberfang (Sepolia-forged)". */
+  epithet: string;
+  /** Scales the ability's raw power. */
+  power: number;
+  /** Added to the ability's accuracy, clamped to 100. */
+  accuracy: number;
+  /** Scales the static attack contribution. */
+  attack: number;
+}
+
+export const ORIGIN_VARIANT: Record<string, OriginVariant> = {
+  // Keen and reliable: the forge most players will ever use.
+  "world-aleph": { epithet: "Aleph-forged", power: 1.0, accuracy: 0, attack: 1.0 },
+  // Heavier and harder to land, and dearer to make (see WORLD_FORGE_RATE) —
+  // which is the whole reason to make the crossing rather than forge at home.
+  "world-mainland": { epithet: "Mainland-forged", power: 1.18, accuracy: -6, attack: 1.1 },
+};
+
+const DEFAULT_VARIANT: OriginVariant = { epithet: "unattested", power: 1, accuracy: 0, attack: 1 };
+
+export const originVariant = (worldId: WorldId): OriginVariant =>
+  ORIGIN_VARIANT[worldId] ?? DEFAULT_VARIANT;
+
+/** How long a proven ownership claim stays fresh before it must be re-attested. */
+export const ATTESTATION_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Build an owned weapon from a catalogue type and the world that forged it.
+ *
+ * Called when a forge proof reaches `rewarded` — never before. The weapon exists
+ * in the armoury because a burn was proven, not because the game granted it.
+ */
+export function mintWeapon(
+  typeId: string,
+  originWorldId: WorldId,
+  instanceId: string,
+  tokenId: string,
+  now: number = Date.now(),
+): WeaponNFT {
+  const type = WEAPONS_BY_ID.get(typeId);
+  if (!type) throw new Error(`Unknown weapon type: ${typeId}`);
+  const v = originVariant(originWorldId);
+  // `id` on a catalogue type names the design; on an owned weapon it names the
+  // instance, so it is replaced rather than carried over.
+  const { id: typeIdOnCatalogue, ...rest } = type;
+  return {
+    ...rest,
+    id: instanceId,
+    typeId: typeIdOnCatalogue,
+    tokenId,
+    originWorldId,
+    attestation: {
+      lastProvenAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + ATTESTATION_TTL_MS).toISOString(),
+    },
+    attack: Math.round(type.attack * v.attack),
+    ability: {
+      ...type.ability,
+      power: Math.round(type.ability.power * v.power),
+      accuracy: Math.min(100, type.ability.accuracy + v.accuracy),
+    },
+  };
+}
+
+/** True when a weapon's proven-ownership claim has lapsed and it cannot be used. */
+export const isAttestationLapsed = (w: WeaponNFT, now: number = Date.now()): boolean =>
+  Date.parse(w.attestation.expiresAt) <= now;
