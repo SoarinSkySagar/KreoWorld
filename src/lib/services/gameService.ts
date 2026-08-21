@@ -126,6 +126,12 @@ export interface GameService {
    */
   getEncounterTable(area: MapAreaKey, floor: number): Promise<EnemySpec[]>;
   /**
+   * The boss holding `floor`'s stair in the current world, or null if that floor
+   * has none authored. Bosses are placed, never rolled — they are the only thing
+   * that moves `floorsCleared`.
+   */
+  getFloorBoss(floor: number): Promise<EnemySpec | null>;
+  /**
    * Settle a finished battle. The client reports *what happened*; the service
    * decides what it paid or cost. A client-computed reward is never accepted
    * (CLAUDE.md §12 — the client is never trusted).

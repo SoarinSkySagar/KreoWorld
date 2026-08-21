@@ -7,6 +7,9 @@ import { InteractionManager } from "../interaction/InteractionManager";
 import { populateArea } from "../interaction/populateArea";
 import { ROOM_INTERACTIONS } from "../data/interactions";
 import type { MapKey } from "../maps";
+import { gameService } from "@/lib/services";
+import { gameStore } from "@/lib/store/gameStore";
+import type { BattleResultKind, EnemySpec } from "@/lib/services/types";
 
 interface InteriorData {
   mapKey: MapKey;
@@ -30,6 +33,8 @@ export class InteriorScene extends Phaser.Scene {
   private transitioning = false;
   /** False until create() has finished building the room; gates update(). */
   private ready = false;
+  /** True while the boss fight owns the screen, so the room stops reacting. */
+  private inBattle = false;
 
   constructor() {
     super("InteriorScene");
@@ -130,15 +135,89 @@ export class InteriorScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize, this),
     );
 
+    // The chamber past the Anchor. Only the island has one, and it is the only
+    // thing in the game that moves `floorsCleared`.
+    if (this.entry.roomKey === "pump") this.addBossChamber(floorX0, floorY0);
+
     this.showTitle(spec.title);
     this.ready = true;
+  }
+
+  /**
+   * The way into the boss chamber.
+   *
+   * Registered here rather than authored as an ordinary prop because it has to
+   * branch on live tower state before it says anything: a floor you have already
+   * cleared should not offer the fight again, and a floor with no boss authored
+   * should say so plainly instead of failing silently.
+   */
+  private addBossChamber(originX: number, originY: number): void {
+    this.interactions.add({
+      x: originX + (10 + 0.5) * TILE,
+      y: originY + (6 + 1) * TILE,
+      label: "The chamber",
+      run: async (ctx) => {
+        const tower = gameStore.getState().tower;
+        const floor = tower?.currentFloor ?? 1;
+
+        if (tower && tower.floorsCleared >= floor) {
+          ctx.say([
+            { text: "The chamber past the Anchor is open and quiet." },
+            { text: `Whatever held Floor ${floor}'s stair is not here any more.` },
+          ]);
+          return;
+        }
+
+        const boss = await gameService.getFloorBoss(floor);
+        if (!this.scene.isActive()) return;
+
+        if (!boss) {
+          ctx.say([
+            { text: "The chamber past the Anchor is sealed flat." },
+            { text: "Nothing holds this floor. There is nothing above it to hold." },
+          ]);
+          return;
+        }
+
+        ctx.say(
+          [
+            { text: "The door past the Anchor is not locked. It is simply held." },
+            { text: `${boss.name} — ${boss.title}.` },
+            { text: boss.taunt },
+          ],
+          () => this.startBossFight(boss),
+        );
+      },
+    });
+  }
+
+  private startBossFight(boss: EnemySpec): void {
+    if (this.inBattle) return;
+    this.inBattle = true;
+    this.player.sprite.setVelocity(0, 0);
+
+    this.events.off("battle:ended");
+    this.events.on("battle:ended", ({ result }: { result: BattleResultKind }) => {
+      this.inBattle = false;
+      this.cameras.main.fadeIn(220);
+      // A win advanced `floorsCleared` service-side; re-read so the HUD and the
+      // stair both see it without the player having to leave the room.
+      if (result === "won") void gameStore.getState().hydrate();
+    });
+
+    this.scene.pause();
+    this.scene.launch("BattleScene", {
+      spec: boss,
+      returnTo: "InteriorScene",
+      instanceId: boss.id,
+    });
   }
 
   private onResize = () => applyCameraZoom(this, 9);
 
   update(): void {
     // See OverworldScene.update — skip frames around a scene restart.
-    if (!this.ready) return;
+    if (!this.ready || this.inBattle) return;
     this.player.update();
     this.interactions.update();
   }
