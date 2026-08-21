@@ -17,6 +17,7 @@
  */
 
 import { ENEMIES, ENEMIES_BY_ID } from "@/game/combat/enemies";
+import { BOSSES_BY_ID, bossForFloor, floorOfBoss } from "@/game/combat/bosses";
 import { ENCOUNTER_MAPS } from "@/game/combat/encounters";
 import { ATTESTATION_TTL_MS, mintWeapon } from "@/game/combat/weapons";
 import { canReachFloor, getFloor } from "@/game/floors";
@@ -398,11 +399,37 @@ export const mockGameService: GameService = {
     }));
   },
 
+  async getFloorBoss(floor: number): Promise<EnemySpec | null> {
+    await delay(90);
+    const boss = bossForFloor(floor);
+    return boss ? structuredClone(boss) : null;
+  },
+
   async resolveBattle(outcome: BattleOutcome): Promise<BattleReward> {
     await delay(200);
-    const spec = ENEMIES_BY_ID.get(outcome.enemyId);
+    const spec = ENEMIES_BY_ID.get(outcome.enemyId) ?? BOSSES_BY_ID.get(outcome.enemyId);
     if (!spec) throw new Error(`Unknown enemy: ${outcome.enemyId}`);
-    const { elixir } = here();
+    const world = here();
+    const { elixir } = world;
+
+    // Whether this was a boss is decided here, from the enemy's identity — not
+    // from a flag the client sent. The client reports what happened; the service
+    // decides what it was worth (CLAUDE.md §12).
+    const bossFloor = floorOfBoss(outcome.enemyId);
+    if (bossFloor !== null && outcome.result === "won") {
+      // The only place floorsCleared ever moves. Clearing a floor you had
+      // already cleared cannot lower it, and it never reaches past the floor
+      // actually fought on.
+      world.tower.floorsCleared = Math.max(world.tower.floorsCleared, bossFloor);
+      elixir.earned += spec.elixirReward;
+      return {
+        elixirEarned: spec.elixirReward,
+        elixirLost: 0,
+        message:
+          `${spec.name} falls. The stair past Floor ${bossFloor} is yours. ` +
+          `+${spec.elixirReward} elixir.`,
+      };
+    }
 
     if (outcome.result === "won") {
       // Wins pay into `earned` only — the unbanked side. Nothing here mints
